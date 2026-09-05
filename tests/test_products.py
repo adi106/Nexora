@@ -1,5 +1,27 @@
+from sqlalchemy import select
+
+from backend.app.models import Product
+
+
+TEST_PRODUCT_SLUG = "nexora-pro-laptop"
+
+
+def get_test_product(test_db):
+    product = test_db.scalar(
+        select(Product).where(
+            Product.slug == TEST_PRODUCT_SLUG
+        )
+    )
+
+    assert product is not None
+
+    return product
+
+
 def test_list_products(client):
-    response = client.get("/api/v1/products")
+    response = client.get(
+        "/api/v1/products"
+    )
 
     assert response.status_code == 200
 
@@ -9,20 +31,21 @@ def test_list_products(client):
     assert len(data) >= 1
 
 
-def test_get_product(client):
-    product_id = "859e5c66-53d4-4f35-993d-fa6733dc5d66"
+def test_get_product(client, test_db):
+    product = get_test_product(test_db)
 
     response = client.get(
-        f"/api/v1/products/{product_id}"
+        f"/api/v1/products/{product.id}"
     )
 
     assert response.status_code == 200
 
     data = response.json()
 
-    assert data["id"] == product_id
-    assert data["name"] == "NEXORA Gaming Laptop"
-    assert data["seller_id"] == 2
+    assert data["id"] == str(product.id)
+    assert data["name"] == "NEXORA Pro Laptop"
+    assert data["seller_id"] == product.seller_id
+
 
 def test_get_product_not_found(client):
     product_id = "00000000-0000-0000-0000-000000000000"

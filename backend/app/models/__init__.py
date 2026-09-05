@@ -9,6 +9,8 @@ from backend.app.models.inventory import Inventory
 from backend.app.models.address import Address
 from backend.app.models.cart import Cart, CartStatus
 from backend.app.models.cart_item import CartItem
+from backend.app.models.order import Order, OrderStatus
+from backend.app.models.order_item import OrderItem
 __all__ = [
     "User",
     "Role",
@@ -22,4 +24,7 @@ __all__ = [
     "Cart",
     "CartStatus",
     "CartItem",
+    "Order",
+    "OrderStatus",
+    "OrderItem",
 ]

@@ -1,5 +1,13 @@
-def test_get_cart_authenticated(client):
-    login_response = client.post(
+from sqlalchemy import select
+
+from backend.app.models import Inventory, ProductVariant
+
+
+TEST_SKU = "NEXORA-PRO-16-512"
+
+
+def login(client):
+    response = client.post(
         "/api/v1/auth/login",
         data={
             "username": "secure.test@nexora.com",
@@ -7,9 +15,37 @@ def test_get_cart_authenticated(client):
         },
     )
 
-    assert login_response.status_code == 200
+    assert response.status_code == 200
 
-    token = login_response.json()["access_token"]
+    return response.json()["access_token"]
+
+
+def get_test_variant(test_db):
+    variant = test_db.scalar(
+        select(ProductVariant).where(
+            ProductVariant.sku == TEST_SKU
+        )
+    )
+
+    assert variant is not None
+
+    return variant
+
+
+def get_test_inventory(test_db, variant_id):
+    inventory = test_db.scalar(
+        select(Inventory).where(
+            Inventory.variant_id == variant_id
+        )
+    )
+
+    assert inventory is not None
+
+    return inventory
+
+
+def test_get_cart_authenticated(client):
+    token = login(client)
 
     response = client.get(
         "/api/v1/cart",
@@ -26,24 +62,19 @@ def test_get_cart_authenticated(client):
     assert data["status"] == "active"
     assert "items" in data
 
+
 def test_get_cart_unauthenticated(client):
-    response = client.get("/api/v1/cart")
+    response = client.get(
+        "/api/v1/cart"
+    )
 
     assert response.status_code == 401
     assert response.json()["detail"] == "Not authenticated"
 
-def test_add_cart_item(client):
-    login_response = client.post(
-        "/api/v1/auth/login",
-        data={
-            "username": "secure.test@nexora.com",
-            "password": "TestPassword123!",
-        },
-    )
 
-    assert login_response.status_code == 200
-
-    token = login_response.json()["access_token"]
+def test_add_cart_item(client, test_db):
+    token = login(client)
+    variant = get_test_variant(test_db)
 
     response = client.post(
         "/api/v1/cart/items",
@@ -51,7 +82,7 @@ def test_add_cart_item(client):
             "Authorization": f"Bearer {token}",
         },
         json={
-            "variant_id": "2c3f7cd0-9d7a-4a5d-aafd-887806c0d1d9",
+            "variant_id": str(variant.id),
             "quantity": 1,
         },
     )
@@ -60,21 +91,12 @@ def test_add_cart_item(client):
 
     data = response.json()
 
-    assert data["variant_id"] == "2c3f7cd0-9d7a-4a5d-aafd-887806c0d1d9"
-    assert data["quantity"] >= 1
+    assert data["variant_id"] == str(variant.id)
+    assert data["quantity"] == 1
+
 
 def test_add_nonexistent_variant(client):
-    login_response = client.post(
-        "/api/v1/auth/login",
-        data={
-            "username": "secure.test@nexora.com",
-            "password": "TestPassword123!",
-        },
-    )
-
-    assert login_response.status_code == 200
-
-    token = login_response.json()["access_token"]
+    token = login(client)
 
     response = client.post(
         "/api/v1/cart/items",
@@ -90,18 +112,16 @@ def test_add_nonexistent_variant(client):
     assert response.status_code == 404
     assert response.json()["detail"] == "Product variant not found"
 
-def test_add_cart_item_exceeds_stock(client):
-    login_response = client.post(
-        "/api/v1/auth/login",
-        data={
-            "username": "secure.test@nexora.com",
-            "password": "TestPassword123!",
-        },
+
+def test_add_cart_item_exceeds_stock(client, test_db):
+    token = login(client)
+
+    variant = get_test_variant(test_db)
+    inventory = get_test_inventory(test_db, variant.id)
+
+    available_stock = (
+        inventory.quantity - inventory.reserved_quantity
     )
-
-    assert login_response.status_code == 200
-
-    token = login_response.json()["access_token"]
 
     response = client.post(
         "/api/v1/cart/items",
@@ -109,26 +129,21 @@ def test_add_cart_item_exceeds_stock(client):
             "Authorization": f"Bearer {token}",
         },
         json={
-            "variant_id": "2c3f7cd0-9d7a-4a5d-aafd-887806c0d1d9",
-            "quantity": 23,
+            "variant_id": str(variant.id),
+            "quantity": available_stock + 1,
         },
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Only 22 items available"
-
-def test_update_cart_item(client):
-    login_response = client.post(
-        "/api/v1/auth/login",
-        data={
-            "username": "secure.test@nexora.com",
-            "password": "TestPassword123!",
-        },
+    assert (
+        response.json()["detail"]
+        == f"Only {available_stock} items available"
     )
 
-    assert login_response.status_code == 200
 
-    token = login_response.json()["access_token"]
+def test_update_cart_item(client, test_db):
+    token = login(client)
+    variant = get_test_variant(test_db)
 
     add_response = client.post(
         "/api/v1/cart/items",
@@ -136,7 +151,7 @@ def test_update_cart_item(client):
             "Authorization": f"Bearer {token}",
         },
         json={
-            "variant_id": "2c3f7cd0-9d7a-4a5d-aafd-887806c0d1d9",
+            "variant_id": str(variant.id),
             "quantity": 1,
         },
     )
@@ -162,18 +177,9 @@ def test_update_cart_item(client):
     assert data["id"] == item_id
     assert data["quantity"] == 5
 
+
 def test_update_nonexistent_cart_item(client):
-    login_response = client.post(
-        "/api/v1/auth/login",
-        data={
-            "username": "secure.test@nexora.com",
-            "password": "TestPassword123!",
-        },
-    )
-
-    assert login_response.status_code == 200
-
-    token = login_response.json()["access_token"]
+    token = login(client)
 
     response = client.put(
         "/api/v1/cart/items/00000000-0000-0000-0000-000000000000",
@@ -188,18 +194,10 @@ def test_update_nonexistent_cart_item(client):
     assert response.status_code == 404
     assert response.json()["detail"] == "Cart item not found"
 
-def test_update_cart_item_exceeds_stock(client):
-    login_response = client.post(
-        "/api/v1/auth/login",
-        data={
-            "username": "secure.test@nexora.com",
-            "password": "TestPassword123!",
-        },
-    )
 
-    assert login_response.status_code == 200
-
-    token = login_response.json()["access_token"]
+def test_update_cart_item_exceeds_stock(client, test_db):
+    token = login(client)
+    variant = get_test_variant(test_db)
 
     add_response = client.post(
         "/api/v1/cart/items",
@@ -207,7 +205,7 @@ def test_update_cart_item_exceeds_stock(client):
             "Authorization": f"Bearer {token}",
         },
         json={
-            "variant_id": "2c3f7cd0-9d7a-4a5d-aafd-887806c0d1d9",
+            "variant_id": str(variant.id),
             "quantity": 1,
         },
     )
@@ -216,31 +214,32 @@ def test_update_cart_item_exceeds_stock(client):
 
     item_id = add_response.json()["id"]
 
+    inventory = get_test_inventory(test_db, variant.id)
+
+    available_stock = (
+        inventory.quantity - inventory.reserved_quantity
+    )
+
     update_response = client.put(
         f"/api/v1/cart/items/{item_id}",
         headers={
             "Authorization": f"Bearer {token}",
         },
         json={
-            "quantity": 23,
+            "quantity": available_stock + 1,
         },
     )
 
     assert update_response.status_code == 400
-    assert update_response.json()["detail"] == "Only 22 items available"
-
-def test_delete_cart_item(client):
-    login_response = client.post(
-        "/api/v1/auth/login",
-        data={
-            "username": "secure.test@nexora.com",
-            "password": "TestPassword123!",
-        },
+    assert (
+        update_response.json()["detail"]
+        == f"Only {available_stock} items available"
     )
 
-    assert login_response.status_code == 200
 
-    token = login_response.json()["access_token"]
+def test_delete_cart_item(client, test_db):
+    token = login(client)
+    variant = get_test_variant(test_db)
 
     add_response = client.post(
         "/api/v1/cart/items",
@@ -248,7 +247,7 @@ def test_delete_cart_item(client):
             "Authorization": f"Bearer {token}",
         },
         json={
-            "variant_id": "2c3f7cd0-9d7a-4a5d-aafd-887806c0d1d9",
+            "variant_id": str(variant.id),
             "quantity": 1,
         },
     )
@@ -267,18 +266,9 @@ def test_delete_cart_item(client):
     assert delete_response.status_code == 204
     assert delete_response.content == b""
 
+
 def test_delete_nonexistent_cart_item(client):
-    login_response = client.post(
-        "/api/v1/auth/login",
-        data={
-            "username": "secure.test@nexora.com",
-            "password": "TestPassword123!",
-        },
-    )
-
-    assert login_response.status_code == 200
-
-    token = login_response.json()["access_token"]
+    token = login(client)
 
     response = client.delete(
         "/api/v1/cart/items/00000000-0000-0000-0000-000000000000",

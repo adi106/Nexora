@@ -2,9 +2,9 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.db.base import Base
 
@@ -22,6 +22,11 @@ class ProductVariant(Base):
         ForeignKey("products.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
+    )
+
+    product: Mapped["Product"] = relationship(
+        "Product",
+        back_populates="variants",
     )
 
     sku: Mapped[str] = mapped_column(
