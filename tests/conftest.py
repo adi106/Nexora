@@ -266,6 +266,21 @@ def reset_order_state(test_db):
 
     assert user is not None
 
+    # Remove all test orders and their items.
+    test_db.execute(
+        delete(OrderItem)
+    )
+
+    test_db.execute(
+        delete(Order)
+    )
+
+    # Remove cart items from every test cart.
+    test_db.execute(
+        delete(CartItem)
+    )
+
+    # Restore the primary test user's active cart.
     cart = test_db.scalar(
         select(Cart).where(
             Cart.user_id == user.id,
@@ -281,29 +296,7 @@ def reset_order_state(test_db):
         test_db.add(cart)
         test_db.flush()
 
-    # Remove cart items from previous tests.
-    test_db.execute(
-        delete(CartItem).where(
-            CartItem.cart_id == cart.id
-        )
-    )
-
-    # Remove previous test orders.
-    order_ids = select(Order.id).where(
-        Order.user_id == user.id
-    )
-
-    test_db.execute(
-        delete(OrderItem).where(
-            OrderItem.order_id.in_(order_ids)
-        )
-    )
-
-    test_db.execute(
-        delete(Order).where(
-            Order.user_id == user.id
-        )
-    )
+    cart.status = CartStatus.ACTIVE
 
     # Restore deterministic inventory state.
     variant = test_db.scalar(
@@ -312,7 +305,28 @@ def reset_order_state(test_db):
         )
     )
 
-    assert variant is not None
+    if variant is None:
+        product = test_db.scalar(
+            select(Product).where(
+                Product.slug == "nexora-pro-laptop"
+            )
+        )
+
+        assert product is not None
+
+        variant = ProductVariant(
+            product_id=product.id,
+            sku="NEXORA-PRO-16-512",
+            price=Decimal("1399.99"),
+            attributes={
+                "color": "Silver",
+                "ram": "16GB",
+                "storage": "512GB",
+            },
+        )
+
+        test_db.add(variant)
+        test_db.flush()
 
     inventory = test_db.scalar(
         select(Inventory).where(
@@ -320,12 +334,19 @@ def reset_order_state(test_db):
         )
     )
 
-    assert inventory is not None
+    if inventory is None:
+        inventory = Inventory(
+            variant_id=variant.id,
+            quantity=100,
+            reserved_quantity=0,
+            reorder_level=5,
+        )
+        test_db.add(inventory)
+        test_db.flush()
 
     inventory.quantity = 100
     inventory.reserved_quantity = 0
-
-    cart.status = CartStatus.ACTIVE
+    variant.is_active = True
 
     test_db.commit()
 

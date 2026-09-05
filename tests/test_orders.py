@@ -2,9 +2,10 @@ from datetime import datetime, timedelta, timezone
 
 from backend.worker.reservation_cleanup import run_cleanup_once
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from backend.app.core.config import settings
+from backend.app.services.order_service import create_order_from_cart
 
 
 
@@ -805,3 +806,302 @@ def test_expired_order_cannot_be_paid(client, test_db):
 
     assert inventory is not None
     assert inventory.reserved_quantity == 0
+
+
+def test_concurrent_checkout_cannot_oversell(test_db):
+    from threading import Barrier, Thread
+
+    from sqlalchemy.orm import sessionmaker
+    from backend.app.models import Cart, CartItem, CartStatus, User
+    from backend.app.services.order_service import create_order_from_cart
+
+    TestSessionLocal = sessionmaker(
+        bind=test_db.get_bind(),
+        autoflush=False,
+        autocommit=False,
+)
+
+    variant = get_test_variant(test_db)
+    address = get_test_address(test_db)
+    first_user = get_test_user(test_db)
+    first_user_id = first_user.id
+    first_address_id = address.id
+
+    # Reduce stock to exactly one available unit.
+    inventory = test_db.scalar(
+        select(Inventory).where(
+            Inventory.variant_id == variant.id
+        )
+    )
+    assert inventory is not None
+
+    inventory.quantity = 1
+    inventory.reserved_quantity = 0
+    test_db.commit()
+
+    # Create or reuse a second test user.
+    second_user = test_db.scalar(
+        select(User).where(
+            User.email == "concurrency.test@nexora.com"
+        )
+    )
+
+    if second_user is None:
+        second_user = User(
+            email="concurrency.test@nexora.com",
+            password_hash="unused",
+            first_name="Concurrency",
+            last_name="Test",
+        )
+        test_db.add(second_user)
+        test_db.flush()
+
+    second_user_id = second_user.id
+
+    second_address = test_db.scalar(
+        select(Address).where(
+            Address.user_id == second_user.id
+        )
+    )
+
+    if second_address is None:
+        second_address = Address(
+            user_id=second_user.id,
+            address_line1="456 Test Street",
+            city="Hamilton",
+            region="Waikato",
+            postal_code="3204",
+            country_code="NZ",
+            is_default=True,
+        )
+        test_db.add(second_address)
+        test_db.flush()
+
+    second_address_id = second_address.id
+
+    second_cart = test_db.scalar(
+        select(Cart).where(
+            Cart.user_id == second_user.id,
+            Cart.status == CartStatus.ACTIVE,
+        )
+    )
+
+    if second_cart is None:
+        second_cart = Cart(
+            user_id=second_user.id,
+            status=CartStatus.ACTIVE,
+        )
+        test_db.add(second_cart)
+        test_db.flush()
+
+    first_cart = get_test_cart(test_db)
+
+    # Clear existing items from both carts.
+    test_db.execute(
+        delete(CartItem).where(
+            CartItem.cart_id.in_(
+                [first_cart.id, second_cart.id]
+            )
+        )
+    )
+
+    # Both customers want the same final unit.
+    test_db.add_all(
+        [
+            CartItem(
+                cart_id=first_cart.id,
+                variant_id=variant.id,
+                quantity=1,
+            ),
+            CartItem(
+                cart_id=second_cart.id,
+                variant_id=variant.id,
+                quantity=1,
+            ),
+        ]
+    )
+
+    test_db.commit()
+
+    # Capture plain IDs before the threaded sessions start.
+    variant_id = variant.id
+
+    barrier = Barrier(2)
+    results = []
+
+    def checkout(user_id, address_id):
+        db = TestSessionLocal()
+
+        try:
+            user = db.get(User, user_id)
+            assert user is not None
+
+            barrier.wait()
+
+            try:
+                order = create_order_from_cart(
+                    db,
+                    user,
+                    address_id,
+                )
+                results.append(("success", order.id))
+
+            except Exception as exc:
+                db.rollback()
+                results.append(("failure", repr(exc)))
+
+        finally:
+            db.close()
+
+    threads = [
+        Thread(
+            target=checkout,
+            args=(first_user_id, first_address_id),
+        ),
+        Thread(
+            target=checkout,
+            args=(second_user_id, second_address_id),
+        ),
+    ]
+
+    for thread in threads:
+        thread.start()
+
+    for thread in threads:
+        thread.join()
+
+    print("\nCONCURRENCY RESULTS:", results)
+
+    successes = [
+        result
+        for result in results
+        if result[0] == "success"
+    ]
+
+    failures = [
+        result
+        for result in results
+        if result[0] == "failure"
+    ]
+
+    assert len(successes) == 1
+    assert len(failures) == 1
+
+    test_db.expire_all()
+
+    inventory = test_db.scalar(
+        select(Inventory).where(
+            Inventory.variant_id == variant_id
+        )
+    )
+
+    assert inventory is not None
+    assert inventory.quantity == 1
+    assert inventory.reserved_quantity == 1
+
+
+def test_concurrent_checkout_same_cart_creates_only_one_order(test_db):
+    from threading import Barrier, Thread
+
+    from sqlalchemy.orm import sessionmaker
+
+    from backend.app.models import CartItem
+    from backend.app.services.order_service import create_order_from_cart
+
+    TestSessionLocal = sessionmaker(
+        bind=test_db.get_bind(),
+        autoflush=False,
+        autocommit=False,
+    )
+
+    user = get_test_user(test_db)
+    address = get_test_address(test_db)
+    cart = get_test_cart(test_db)
+    variant = get_test_variant(test_db)
+
+    inventory = test_db.scalar(
+        select(Inventory).where(
+            Inventory.variant_id == variant.id
+        )
+    )
+    assert inventory is not None
+
+    # Give enough stock that inventory availability itself
+    # does not prevent the second checkout.
+    inventory.quantity = 10
+    inventory.reserved_quantity = 0
+
+    test_db.execute(
+        delete(CartItem).where(
+            CartItem.cart_id == cart.id
+        )
+    )
+
+    test_db.add(
+        CartItem(
+            cart_id=cart.id,
+            variant_id=variant.id,
+            quantity=1,
+        )
+    )
+
+    cart.status = CartStatus.ACTIVE
+    test_db.commit()
+
+    user_id = user.id
+    address_id = address.id
+
+    barrier = Barrier(2)
+    results = []
+
+    def checkout():
+        db = TestSessionLocal()
+
+        try:
+            current_user = db.get(User, user_id)
+            assert current_user is not None
+
+            barrier.wait()
+
+            try:
+                order = create_order_from_cart(
+                    db,
+                    current_user,
+                    address_id,
+                )
+                results.append(("success", order.id))
+
+            except Exception as exc:
+                db.rollback()
+                results.append(("failure", repr(exc)))
+
+        finally:
+            db.close()
+
+    threads = [
+        Thread(target=checkout),
+        Thread(target=checkout),
+    ]
+
+    for thread in threads:
+        thread.start()
+
+    for thread in threads:
+        thread.join()
+
+    print("\nSAME CART CONCURRENCY RESULTS:", results)
+
+    successes = [
+        result
+        for result in results
+        if result[0] == "success"
+    ]
+
+    failures = [
+        result
+        for result in results
+        if result[0] == "failure"
+    ]
+
+    assert len(successes) == 1
+    assert len(failures) == 1

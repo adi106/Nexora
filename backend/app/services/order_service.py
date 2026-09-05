@@ -40,6 +40,7 @@ def create_order_from_cart(
             Cart.user_id == current_user.id,
             Cart.status == CartStatus.ACTIVE,
         )
+        .with_for_update()
         .first()
     )
 

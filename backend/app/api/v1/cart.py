@@ -200,10 +200,25 @@ def update_cart_item(
             detail="Cart item not found",
         )
 
+    variant = (
+        db.query(ProductVariant)
+        .filter(
+            ProductVariant.id == item.variant_id,
+            ProductVariant.is_active.is_(True),
+        )
+        .first()
+    )
+
+    if variant is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Product variant is not available",
+        )
+
     inventory = (
         db.query(Inventory)
         .filter(
-            Inventory.variant_id == item.variant_id,
+            Inventory.variant_id == variant.id,
             Inventory.is_active.is_(True),
         )
         .first()
@@ -231,6 +246,7 @@ def update_cart_item(
     db.refresh(item)
 
     return item
+
 
 @router.delete(
     "/items/{item_id}",

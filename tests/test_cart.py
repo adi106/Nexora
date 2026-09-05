@@ -113,6 +113,29 @@ def test_add_nonexistent_variant(client):
     assert response.json()["detail"] == "Product variant not found"
 
 
+
+def test_add_inactive_variant(client, test_db):
+    token = login(client)
+    variant = get_test_variant(test_db)
+
+    variant.is_active = False
+    test_db.commit()
+
+    response = client.post(
+        "/api/v1/cart/items",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+        json={
+            "variant_id": str(variant.id),
+            "quantity": 1,
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Product variant not found"
+
+
 def test_add_cart_item_exceeds_stock(client, test_db):
     token = login(client)
 
@@ -279,3 +302,75 @@ def test_delete_nonexistent_cart_item(client):
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Cart item not found"
+
+
+def test_update_cart_item_rejects_inactive_variant(client, test_db):
+    token = login(client)
+    variant = get_test_variant(test_db)
+
+    add_response = client.post(
+        "/api/v1/cart/items",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+        json={
+            "variant_id": str(variant.id),
+            "quantity": 1,
+        },
+    )
+
+    assert add_response.status_code == 201
+
+    item_id = add_response.json()["id"]
+
+    variant.is_active = False
+    test_db.commit()
+
+    update_response = client.put(
+        f"/api/v1/cart/items/{item_id}",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+        json={
+            "quantity": 2,
+        },
+    )
+
+    assert update_response.status_code == 400
+    assert update_response.json()["detail"] == "Product variant is not available"
+
+
+def test_deleting_variant_removes_cart_item(client, test_db):
+    token = login(client)
+    variant = get_test_variant(test_db)
+
+    add_response = client.post(
+        "/api/v1/cart/items",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+        json={
+            "variant_id": str(variant.id),
+            "quantity": 1,
+        },
+    )
+
+    assert add_response.status_code == 201
+
+    item_id = add_response.json()["id"]
+
+    test_db.delete(variant)
+    test_db.commit()
+
+    cart_response = client.get(
+        "/api/v1/cart",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+    )
+
+    assert cart_response.status_code == 200
+
+    item_ids = [item["id"] for item in cart_response.json()["items"]]
+
+    assert item_id not in item_ids
