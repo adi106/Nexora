@@ -299,6 +299,16 @@ def reset_order_state(test_db):
     cart.status = CartStatus.ACTIVE
 
     # Restore deterministic inventory state.
+
+    product = test_db.scalar(
+        select(Product).where(
+            Product.slug == "nexora-pro-laptop"
+        )
+    )
+
+    assert product is not None
+    product.is_active = True
+
     variant = test_db.scalar(
         select(ProductVariant).where(
             ProductVariant.sku == "NEXORA-PRO-16-512"
@@ -344,6 +354,15 @@ def reset_order_state(test_db):
         test_db.add(inventory)
         test_db.flush()
 
+        product = test_db.scalar(
+        select(Product).where(
+            Product.slug == "nexora-pro-laptop"
+        )
+    )
+
+    assert product is not None
+
+    product.is_active = True
     inventory.quantity = 100
     inventory.reserved_quantity = 0
     variant.is_active = True

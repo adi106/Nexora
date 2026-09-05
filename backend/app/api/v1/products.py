@@ -26,6 +26,7 @@ def list_products(
 ):
     products = (
         db.query(Product)
+        .filter(Product.is_active.is_(True))
         .order_by(Product.created_at.desc())
         .all()
     )
@@ -43,7 +44,10 @@ def get_product(
 ):
     product = (
         db.query(Product)
-        .filter(Product.id == product_id)
+        .filter(
+            Product.id == product_id,
+            Product.is_active.is_(True),
+        )
         .first()
     )
 

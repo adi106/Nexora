@@ -31,6 +31,25 @@ def test_list_products(client):
     assert len(data) >= 1
 
 
+def test_list_products_excludes_inactive_product(client, test_db):
+    product = get_test_product(test_db)
+
+    product.is_active = False
+    test_db.commit()
+
+    response = client.get(
+        "/api/v1/products"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    product_ids = {item["id"] for item in data}
+
+    assert str(product.id) not in product_ids
+
+
 def test_get_product(client, test_db):
     product = get_test_product(test_db)
 
@@ -45,6 +64,20 @@ def test_get_product(client, test_db):
     assert data["id"] == str(product.id)
     assert data["name"] == "NEXORA Pro Laptop"
     assert data["seller_id"] == product.seller_id
+
+
+def test_get_inactive_product_returns_not_found(client, test_db):
+    product = get_test_product(test_db)
+
+    product.is_active = False
+    test_db.commit()
+
+    response = client.get(
+        f"/api/v1/products/{product.id}"
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Product not found"
 
 
 def test_get_product_not_found(client):
