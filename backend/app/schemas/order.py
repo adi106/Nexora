@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 
 class OrderCreate(BaseModel):
@@ -45,7 +45,8 @@ class OrderResponse(BaseModel):
 
     created_at: datetime
     updated_at: datetime
+    reservation_expires_at: datetime | None
 
-    items: list[OrderItemResponse] = Field(default_factory=list)
+    items: list[OrderItemResponse]
 
     model_config = ConfigDict(from_attributes=True)

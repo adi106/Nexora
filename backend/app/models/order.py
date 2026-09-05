@@ -95,6 +95,12 @@ class Order(Base):
         nullable=False,
     )
 
+    reservation_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+    )
+
     items: Mapped[list["OrderItem"]] = relationship(
         "OrderItem",
         back_populates="order",

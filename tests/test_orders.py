@@ -1,4 +1,12 @@
+from datetime import datetime, timedelta, timezone
+
+from backend.worker.reservation_cleanup import run_cleanup_once
+
 from sqlalchemy import select
+
+from backend.app.core.config import settings
+
+
 
 from backend.app.models import (
     Address,
@@ -441,3 +449,359 @@ def test_payment_failure_cancels_order_and_releases_inventory(
 
     assert inventory.quantity == quantity_before
     assert inventory.reserved_quantity == reserved_before
+
+def test_create_order_sets_reservation_expiry(client, test_db):
+    token = login(client)
+    variant = get_test_variant(test_db)
+    address = get_test_address(test_db)
+
+    add_response = client.post(
+        "/api/v1/cart/items",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "variant_id": str(variant.id),
+            "quantity": 1,
+        },
+    )
+
+    assert add_response.status_code == 201
+
+    before_creation = datetime.now(timezone.utc)
+
+    order_response = client.post(
+        "/api/v1/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"address_id": str(address.id)},
+    )
+
+    after_creation = datetime.now(timezone.utc)
+
+    assert order_response.status_code == 201
+
+    data = order_response.json()
+
+    assert data["status"] == "pending"
+    assert data["reservation_expires_at"] is not None
+
+    reservation_expires_at = datetime.fromisoformat(
+        data["reservation_expires_at"].replace("Z", "+00:00")
+    )
+
+    expected_before = (
+        before_creation
+        + timedelta(minutes=settings.reservation_expiry_minutes)
+    )
+    expected_after = (
+        after_creation
+        + timedelta(minutes=settings.reservation_expiry_minutes)
+    )
+
+    assert expected_before <= reservation_expires_at <= expected_after
+
+
+def test_expire_pending_order_releases_inventory(client, test_db):
+    from backend.app.services.reservation_service import expire_pending_orders
+
+    token = login(client)
+    variant = get_test_variant(test_db)
+    address = get_test_address(test_db)
+
+    add_response = client.post(
+        "/api/v1/cart/items",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "variant_id": str(variant.id),
+            "quantity": 3,
+        },
+    )
+
+    assert add_response.status_code == 201
+
+    order_response = client.post(
+        "/api/v1/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"address_id": str(address.id)},
+    )
+
+    assert order_response.status_code == 201
+
+    order_id = order_response.json()["id"]
+
+    test_db.expire_all()
+
+    inventory = test_db.scalar(
+        select(Inventory).where(
+            Inventory.variant_id == variant.id
+        )
+    )
+
+    assert inventory is not None
+    assert inventory.reserved_quantity == 3
+
+    order = test_db.get(
+        __import__(
+            "backend.app.models.order",
+            fromlist=["Order"],
+        ).Order,
+        order_id,
+    )
+
+    assert order is not None
+
+    expired_count = expire_pending_orders(
+        test_db,
+        now=order.reservation_expires_at + timedelta(seconds=1),
+    )
+
+    assert expired_count == 1
+
+    test_db.expire_all()
+
+    inventory = test_db.scalar(
+        select(Inventory).where(
+            Inventory.variant_id == variant.id
+        )
+    )
+
+    assert inventory is not None
+    assert inventory.reserved_quantity == 0
+
+    order = test_db.get(
+        __import__(
+            "backend.app.models.order",
+            fromlist=["Order"],
+        ).Order,
+        order_id,
+    )
+
+    assert order is not None
+    assert order.status.value == "cancelled"
+
+
+def test_expire_pending_order_is_idempotent(client, test_db):
+    from backend.app.services.reservation_service import expire_pending_orders
+
+    token = login(client)
+    variant = get_test_variant(test_db)
+    address = get_test_address(test_db)
+
+    add_response = client.post(
+        "/api/v1/cart/items",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "variant_id": str(variant.id),
+            "quantity": 2,
+        },
+    )
+
+    assert add_response.status_code == 201
+
+    order_response = client.post(
+        "/api/v1/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"address_id": str(address.id)},
+    )
+
+    assert order_response.status_code == 201
+
+    order_id = order_response.json()["id"]
+
+    test_db.expire_all()
+
+    order = test_db.get(
+        __import__(
+            "backend.app.models.order",
+            fromlist=["Order"],
+        ).Order,
+        order_id,
+    )
+
+    assert order is not None
+
+    expiry_time = order.reservation_expires_at + timedelta(seconds=1)
+
+    first_count = expire_pending_orders(
+        test_db,
+        now=expiry_time,
+    )
+
+    assert first_count == 1
+
+    test_db.expire_all()
+
+    inventory = test_db.scalar(
+        select(Inventory).where(
+            Inventory.variant_id == variant.id
+        )
+    )
+
+    assert inventory is not None
+    assert inventory.reserved_quantity == 0
+
+    second_count = expire_pending_orders(
+        test_db,
+        now=expiry_time + timedelta(minutes=1),
+    )
+
+    assert second_count == 0
+
+    test_db.expire_all()
+
+    inventory = test_db.scalar(
+        select(Inventory).where(
+            Inventory.variant_id == variant.id
+        )
+    )
+
+    assert inventory is not None
+    assert inventory.reserved_quantity == 0
+
+
+def test_reservation_cleanup_worker_expires_orders(client, test_db):
+    token = login(client)
+    variant = get_test_variant(test_db)
+    address = get_test_address(test_db)
+
+    add_response = client.post(
+        "/api/v1/cart/items",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "variant_id": str(variant.id),
+            "quantity": 4,
+        },
+    )
+
+    assert add_response.status_code == 201
+
+    order_response = client.post(
+        "/api/v1/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"address_id": str(address.id)},
+    )
+
+    assert order_response.status_code == 201
+
+    order_id = order_response.json()["id"]
+
+    test_db.expire_all()
+
+    order = test_db.get(
+        __import__(
+            "backend.app.models.order",
+            fromlist=["Order"],
+        ).Order,
+        order_id,
+    )
+
+    assert order is not None
+    assert order.reservation_expires_at is not None
+
+    # Move the reservation expiry into the past.
+    order.reservation_expires_at = (
+        datetime.now(timezone.utc) - timedelta(seconds=1)
+    )
+    test_db.commit()
+
+    expired_count = run_cleanup_once(test_db)
+
+    assert expired_count == 1
+
+    test_db.expire_all()
+
+    order = test_db.get(
+        __import__(
+            "backend.app.models.order",
+            fromlist=["Order"],
+        ).Order,
+        order_id,
+    )
+
+    assert order is not None
+    assert order.status.value == "cancelled"
+
+    inventory = test_db.scalar(
+        select(Inventory).where(
+            Inventory.variant_id == variant.id
+        )
+    )
+
+    assert inventory is not None
+    assert inventory.reserved_quantity == 0
+
+
+def test_expired_order_cannot_be_paid(client, test_db):
+    token = login(client)
+    variant = get_test_variant(test_db)
+    address = get_test_address(test_db)
+
+    add_response = client.post(
+        "/api/v1/cart/items",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "variant_id": str(variant.id),
+            "quantity": 1,
+        },
+    )
+
+    assert add_response.status_code == 201
+
+    order_response = client.post(
+        "/api/v1/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"address_id": str(address.id)},
+    )
+
+    assert order_response.status_code == 201
+
+    order_id = order_response.json()["id"]
+
+    test_db.expire_all()
+
+    order = test_db.get(
+        __import__(
+            "backend.app.models.order",
+            fromlist=["Order"],
+        ).Order,
+        order_id,
+    )
+
+    assert order is not None
+    assert order.reservation_expires_at is not None
+
+    order.reservation_expires_at = (
+        datetime.now(timezone.utc) - timedelta(seconds=1)
+    )
+    test_db.commit()
+
+    payment_response = client.post(
+        f"/api/v1/orders/{order_id}/payment",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"succeed": True},
+    )
+
+    assert payment_response.status_code == 400
+    assert payment_response.json()["detail"] == (
+        "Order reservation has expired"
+    )
+
+    test_db.expire_all()
+
+    order = test_db.get(
+        __import__(
+            "backend.app.models.order",
+            fromlist=["Order"],
+        ).Order,
+        order_id,
+    )
+
+    assert order is not None
+    assert order.status.value == "cancelled"
+
+    inventory = test_db.scalar(
+        select(Inventory).where(
+            Inventory.variant_id == variant.id
+        )
+    )
+
+    assert inventory is not None
+    assert inventory.reserved_quantity == 0

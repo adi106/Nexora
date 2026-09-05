@@ -1,11 +1,12 @@
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from backend.app.core.config import settings
 from backend.app.models.address import Address
 from backend.app.models.cart import Cart, CartStatus
-from backend.app.models.cart_item import CartItem
 from backend.app.models.inventory import Inventory
 from backend.app.models.order import Order, OrderStatus
 from backend.app.models.order_item import OrderItem
@@ -120,6 +121,11 @@ def create_order_from_cart(
             }
         )
 
+    reservation_expires_at = (
+        datetime.now(timezone.utc)
+        + timedelta(minutes=settings.reservation_expiry_minutes)
+    )
+
     order = Order(
         user_id=current_user.id,
         status=OrderStatus.PENDING,
@@ -133,6 +139,7 @@ def create_order_from_cart(
         shipping_region=address.region,
         shipping_postal_code=address.postal_code,
         shipping_country_code=address.country_code,
+        reservation_expires_at=reservation_expires_at,
     )
 
     db.add(order)
