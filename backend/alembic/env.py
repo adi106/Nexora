@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from backend.app.db.base import Base
 from backend.app.models import User
+from backend.app.models.review import Review
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

@@ -22,6 +22,7 @@ from backend.app.models import (
     Seller,
     User,
     UserRole,
+    Review,
 )
 from backend.app.models.cart import CartStatus
 
@@ -58,6 +59,23 @@ def seed_test_database():
             db.add(user)
             db.flush()
 
+        other_user = db.scalar(
+            select(User).where(
+                User.email == "other.test@nexora.com"
+            )
+        )
+
+        if other_user is None:
+            other_user = User(
+                email="other.test@nexora.com",
+                password_hash=hash_password("TestPassword123!"),
+                first_name="Other",
+                last_name="Test",
+            )
+            db.add(other_user)
+            db.flush()
+
+
         customer_role = db.scalar(
             select(Role).where(
                 Role.name == "customer"
@@ -71,6 +89,23 @@ def seed_test_database():
                     UserRole.role_id == customer_role.id,
                 )
             )
+
+        if customer_role is not None:
+            other_customer_role = db.scalar(
+                select(UserRole).where(
+                    UserRole.user_id == other_user.id,
+                    UserRole.role_id == customer_role.id,
+                )
+            )
+
+            if other_customer_role is None:
+                db.add(
+                    UserRole(
+                        user_id=other_user.id,
+                        role_id=customer_role.id,
+                    )
+                )
+
 
             if existing_user_role is None:
                 db.add(
@@ -303,6 +338,9 @@ def reset_order_state(test_db):
     )
 
     assert user is not None
+
+    # Remove reviews created by previous tests.
+    test_db.execute(delete(Review))
 
     # Remove all test orders and their items.
     test_db.execute(delete(OrderItem))
