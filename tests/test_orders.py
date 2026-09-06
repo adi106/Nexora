@@ -13,7 +13,9 @@ from backend.app.models import (
     Address,
     Cart,
     CartItem,
+    Category,
     Inventory,
+    Product,
     ProductVariant,
     User,
 )
@@ -30,6 +32,34 @@ def login(client):
         "/api/v1/auth/login",
         data={
             "username": TEST_EMAIL,
+            "password": TEST_PASSWORD,
+        },
+    )
+
+    assert response.status_code == 200
+
+    return response.json()["access_token"]
+
+
+def seller_login(client):
+    response = client.post(
+        "/api/v1/auth/login",
+        data={
+            "username": "test.seller@nexora.local",
+            "password": TEST_PASSWORD,
+        },
+    )
+
+    assert response.status_code == 200
+
+    return response.json()["access_token"]
+
+
+def admin_login(client):
+    response = client.post(
+        "/api/v1/auth/login",
+        data={
+            "username": "test.admin@nexora.local",
             "password": TEST_PASSWORD,
         },
     )
@@ -124,6 +154,19 @@ def test_get_single_order_requires_authentication(client):
     assert response.json()["detail"] == "Not authenticated"
 
 
+def test_update_order_status_requires_authentication(client):
+    response = client.patch(
+        "/api/v1/orders/3481b84c-0de6-45a9-8dbb-e3f57ec6d3f5/status",
+        json={
+            "status": "cancelled",
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Not authenticated"
+
+
+
 def test_create_order_with_authenticated_user(client, test_db):
     token = login(client)
 
@@ -177,6 +220,104 @@ def test_create_order_with_authenticated_user(client, test_db):
     assert data["items"][0]["sku"] == TEST_SKU
     assert data["items"][0]["quantity"] == 1
     assert data["items"][0]["subtotal"] == "1399.99"
+
+
+def test_create_order_rejects_inactive_product(client, test_db):
+    token = login(client)
+
+    variant = get_test_variant(test_db)
+    address = get_test_address(test_db)
+
+    product = test_db.scalar(
+        select(Product).where(
+            Product.id == variant.product_id
+        )
+    )
+
+    assert product is not None
+
+    add_response = client.post(
+        "/api/v1/cart/items",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+        json={
+            "variant_id": str(variant.id),
+            "quantity": 1,
+        },
+    )
+
+    assert add_response.status_code == 201
+
+    product.is_active = False
+    test_db.commit()
+
+    order_response = client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+        json={
+            "address_id": str(address.id),
+        },
+    )
+
+    assert order_response.status_code == 400
+    assert "no longer available" in order_response.json()["detail"].lower()
+
+
+def test_create_order_rejects_inactive_category(client, test_db):
+    token = login(client)
+
+    variant = get_test_variant(test_db)
+    address = get_test_address(test_db)
+
+    product = test_db.scalar(
+        select(Product).where(
+            Product.id == variant.product_id
+        )
+    )
+
+    assert product is not None
+
+    category = test_db.scalar(
+        select(Category).where(
+            Category.id == product.category_id
+        )
+    )
+
+    assert category is not None
+
+    add_response = client.post(
+        "/api/v1/cart/items",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+        json={
+            "variant_id": str(variant.id),
+            "quantity": 1,
+        },
+    )
+
+    assert add_response.status_code == 201
+
+    category.is_active = False
+    test_db.commit()
+
+    order_response = client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+        json={
+            "address_id": str(address.id),
+        },
+    )
+
+    assert order_response.status_code == 400
+    assert "no longer available" in order_response.json()["detail"].lower()
+
+
 
 
 def test_create_order_reserves_inventory(client, test_db):
@@ -1105,3 +1246,241 @@ def test_concurrent_checkout_same_cart_creates_only_one_order(test_db):
 
     assert len(successes) == 1
     assert len(failures) == 1
+
+
+def test_customer_cannot_update_order_status(client, test_db):
+    token = login(client)
+    variant = get_test_variant(test_db)
+    address = get_test_address(test_db)
+
+    add_response = client.post(
+        "/api/v1/cart/items",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "variant_id": str(variant.id),
+            "quantity": 1,
+        },
+    )
+
+    assert add_response.status_code == 201
+
+    order_response = client.post(
+        "/api/v1/orders",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "address_id": str(address.id),
+        },
+    )
+
+    assert order_response.status_code == 201
+
+    order_id = order_response.json()["id"]
+
+    status_response = client.patch(
+        f"/api/v1/orders/{order_id}/status",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "status": "cancelled",
+        },
+    )
+
+    assert status_response.status_code == 403
+    assert status_response.json()["detail"] == "Insufficient permissions"
+
+
+def test_seller_can_update_own_order_status(client, test_db):
+    customer_token = login(client)
+    seller_token = seller_login(client)
+
+    variant = get_test_variant(test_db)
+    address = get_test_address(test_db)
+
+    add_response = client.post(
+        "/api/v1/cart/items",
+        headers={"Authorization": f"Bearer {customer_token}"},
+        json={
+            "variant_id": str(variant.id),
+            "quantity": 1,
+        },
+    )
+
+    assert add_response.status_code == 201
+
+    order_response = client.post(
+        "/api/v1/orders",
+        headers={"Authorization": f"Bearer {customer_token}"},
+        json={
+            "address_id": str(address.id),
+        },
+    )
+
+    assert order_response.status_code == 201
+
+    order_id = order_response.json()["id"]
+
+    status_response = client.patch(
+        f"/api/v1/orders/{order_id}/status",
+        headers={"Authorization": f"Bearer {seller_token}"},
+        json={
+            "status": "cancelled",
+        },
+    )
+
+    assert status_response.status_code == 200
+
+    data = status_response.json()
+
+    assert data["id"] == order_id
+    assert data["status"] == "cancelled"
+
+
+def test_seller_cannot_update_another_sellers_order_status(
+    client,
+    test_db,
+):
+    customer_token = login(client)
+
+    variant = get_test_variant(test_db)
+    address = get_test_address(test_db)
+
+    add_response = client.post(
+        "/api/v1/cart/items",
+        headers={"Authorization": f"Bearer {customer_token}"},
+        json={
+            "variant_id": str(variant.id),
+            "quantity": 1,
+        },
+    )
+
+    assert add_response.status_code == 201
+
+    order_response = client.post(
+        "/api/v1/orders",
+        headers={"Authorization": f"Bearer {customer_token}"},
+        json={
+            "address_id": str(address.id),
+        },
+    )
+
+    assert order_response.status_code == 201
+
+    order_id = order_response.json()["id"]
+
+    other_seller_token_response = client.post(
+        "/api/v1/auth/login",
+        data={
+            "username": "other.test.seller@nexora.local",
+            "password": TEST_PASSWORD,
+        },
+    )
+
+    assert other_seller_token_response.status_code == 200
+
+    other_seller_token = (
+        other_seller_token_response.json()["access_token"]
+    )
+
+    status_response = client.patch(
+        f"/api/v1/orders/{order_id}/status",
+        headers={
+            "Authorization": f"Bearer {other_seller_token}",
+        },
+        json={
+            "status": "cancelled",
+        },
+    )
+
+    assert status_response.status_code == 403
+    assert status_response.json()["detail"] == (
+        "You do not have permission to update this order"
+    )
+
+def test_admin_can_update_any_order_status(client, test_db):
+    customer_token = login(client)
+    admin_token = admin_login(client)
+
+    variant = get_test_variant(test_db)
+    address = get_test_address(test_db)
+
+    add_response = client.post(
+        "/api/v1/cart/items",
+        headers={"Authorization": f"Bearer {customer_token}"},
+        json={
+            "variant_id": str(variant.id),
+            "quantity": 1,
+        },
+    )
+
+    assert add_response.status_code == 201
+
+    order_response = client.post(
+        "/api/v1/orders",
+        headers={"Authorization": f"Bearer {customer_token}"},
+        json={
+            "address_id": str(address.id),
+        },
+    )
+
+    assert order_response.status_code == 201
+
+    order_id = order_response.json()["id"]
+
+    status_response = client.patch(
+        f"/api/v1/orders/{order_id}/status",
+        headers={
+            "Authorization": f"Bearer {admin_token}",
+        },
+        json={
+            "status": "cancelled",
+        },
+    )
+
+    assert status_response.status_code == 200
+
+    data = status_response.json()
+
+    assert data["id"] == order_id
+    assert data["status"] == "cancelled"
+
+
+def test_invalid_order_status_transition_is_rejected(client, test_db):
+    customer_token = login(client)
+
+    variant = get_test_variant(test_db)
+    address = get_test_address(test_db)
+
+    add_response = client.post(
+        "/api/v1/cart/items",
+        headers={"Authorization": f"Bearer {customer_token}"},
+        json={
+            "variant_id": str(variant.id),
+            "quantity": 1,
+        },
+    )
+    assert add_response.status_code == 201
+
+    order_response = client.post(
+        "/api/v1/orders",
+        headers={"Authorization": f"Bearer {customer_token}"},
+        json={
+            "address_id": str(address.id),
+        },
+    )
+    assert order_response.status_code == 201
+
+    order_id = order_response.json()["id"]
+
+    admin_token = admin_login(client)
+
+    status_response = client.patch(
+        f"/api/v1/orders/{order_id}/status",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        json={
+            "status": "delivered",
+        },
+    )
+
+    assert status_response.status_code == 400
+    assert status_response.json()["detail"] == (
+    "Cannot transition order from pending to delivered"
+)

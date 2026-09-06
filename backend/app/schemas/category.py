@@ -8,6 +8,7 @@ class CategoryBase(BaseModel):
     slug: str = Field(min_length=1, max_length=100)
     description: str | None = None
     parent_id: int | None = None
+    is_active: bool
 
 
 class CategoryCreate(CategoryBase):
@@ -21,3 +22,6 @@ class CategoryResponse(CategoryBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+class CategoryStatusUpdate(BaseModel):
+    is_active: bool

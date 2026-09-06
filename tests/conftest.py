@@ -118,6 +118,44 @@ def seed_test_database():
                     )
                 )
 
+        admin_user = db.scalar(
+            select(User).where(
+                User.email == "test.admin@nexora.local"
+            )
+        )
+
+        if admin_user is None:
+            admin_user = User(
+                email="test.admin@nexora.local",
+                password_hash=hash_password("TestPassword123!"),
+                first_name="Test",
+                last_name="Admin",
+            )
+            db.add(admin_user)
+            db.flush()
+
+        admin_role = db.scalar(
+            select(Role).where(
+                Role.name == "admin"
+            )
+        )
+
+        if admin_role is not None:
+            existing_admin_role = db.scalar(
+                select(UserRole).where(
+                    UserRole.user_id == admin_user.id,
+                    UserRole.role_id == admin_role.id,
+                )
+            )
+
+            if existing_admin_role is None:
+                db.add(
+                    UserRole(
+                        user_id=admin_user.id,
+                        role_id=admin_role.id,
+                    )
+                )
+
         seller = db.scalar(
             select(Seller).where(
                 Seller.user_id == seller_user.id
@@ -267,17 +305,98 @@ def reset_order_state(test_db):
     assert user is not None
 
     # Remove all test orders and their items.
-    test_db.execute(
-        delete(OrderItem)
-    )
-
-    test_db.execute(
-        delete(Order)
-    )
+    test_db.execute(delete(OrderItem))
+    test_db.execute(delete(Order))
 
     # Remove cart items from every test cart.
+    test_db.execute(delete(CartItem))
+
+    # Restore deterministic category state.
+    category = test_db.scalar(
+        select(Category).where(
+            Category.slug == "laptops"
+        )
+    )
+
+    assert category is not None
+    category.is_active = True
+
+    # Restore deterministic product state.
+    product = test_db.scalar(
+        select(Product).where(
+            Product.slug == "nexora-pro-laptop"
+        )
+    )
+
+    assert product is not None
+    product.is_active = True
+    product.category_id = category.id
+
+    # Restore the canonical variant.
+    variant = test_db.scalar(
+        select(ProductVariant).where(
+            ProductVariant.sku == "NEXORA-PRO-16-512"
+        )
+    )
+
+    if variant is None:
+        variant = ProductVariant(
+            product_id=product.id,
+            sku="NEXORA-PRO-16-512",
+            price=Decimal("1399.99"),
+            attributes={
+                "color": "Silver",
+                "ram": "16GB",
+                "storage": "512GB",
+            },
+        )
+        test_db.add(variant)
+        test_db.flush()
+
+    variant.product_id = product.id
+    variant.price = Decimal("1399.99")
+    variant.attributes = {
+        "color": "Silver",
+        "ram": "16GB",
+        "storage": "512GB",
+    }
+    variant.is_active = True
+
+    # Remove all test-created variants while preserving
+    # the canonical variant.
     test_db.execute(
-        delete(CartItem)
+        delete(ProductVariant).where(
+            ProductVariant.id != variant.id
+        )
+    )
+
+    # Restore deterministic inventory state.
+    inventory = test_db.scalar(
+        select(Inventory).where(
+            Inventory.variant_id == variant.id
+        )
+    )
+
+    if inventory is None:
+        inventory = Inventory(
+            variant_id=variant.id,
+            quantity=100,
+            reserved_quantity=0,
+            reorder_level=5,
+        )
+        test_db.add(inventory)
+        test_db.flush()
+
+    inventory.quantity = 100
+    inventory.reserved_quantity = 0
+    inventory.reorder_level = 5
+    inventory.is_active = True
+
+    # Remove inventory rows belonging to deleted/non-canonical variants.
+    test_db.execute(
+        delete(Inventory).where(
+            Inventory.variant_id != variant.id
+        )
     )
 
     # Restore the primary test user's active cart.
@@ -298,77 +417,7 @@ def reset_order_state(test_db):
 
     cart.status = CartStatus.ACTIVE
 
-    # Restore deterministic inventory state.
-
-    product = test_db.scalar(
-        select(Product).where(
-            Product.slug == "nexora-pro-laptop"
-        )
-    )
-
-    assert product is not None
-    product.is_active = True
-
-    variant = test_db.scalar(
-        select(ProductVariant).where(
-            ProductVariant.sku == "NEXORA-PRO-16-512"
-        )
-    )
-
-    if variant is None:
-        product = test_db.scalar(
-            select(Product).where(
-                Product.slug == "nexora-pro-laptop"
-            )
-        )
-
-        assert product is not None
-
-        variant = ProductVariant(
-            product_id=product.id,
-            sku="NEXORA-PRO-16-512",
-            price=Decimal("1399.99"),
-            attributes={
-                "color": "Silver",
-                "ram": "16GB",
-                "storage": "512GB",
-            },
-        )
-
-        test_db.add(variant)
-        test_db.flush()
-
-    inventory = test_db.scalar(
-        select(Inventory).where(
-            Inventory.variant_id == variant.id
-        )
-    )
-
-    if inventory is None:
-        inventory = Inventory(
-            variant_id=variant.id,
-            quantity=100,
-            reserved_quantity=0,
-            reorder_level=5,
-        )
-        test_db.add(inventory)
-        test_db.flush()
-
-        product = test_db.scalar(
-        select(Product).where(
-            Product.slug == "nexora-pro-laptop"
-        )
-    )
-
-    assert product is not None
-
-    product.is_active = True
-    inventory.quantity = 100
-    inventory.reserved_quantity = 0
-    variant.is_active = True
-
     test_db.commit()
-
 
 @pytest.fixture
 def client():

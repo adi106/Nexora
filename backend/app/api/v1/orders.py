@@ -6,7 +6,13 @@ from sqlalchemy.orm import Session
 from backend.app.core.security import get_current_user
 from backend.app.db.dependencies import get_db
 from backend.app.models.order import Order, OrderStatus
+from backend.app.models.order_item import OrderItem
+from backend.app.models.product import Product
+from backend.app.models.product_variant import ProductVariant
+from backend.app.models.role import Role
+from backend.app.models.seller import Seller
 from backend.app.models.user import User
+from backend.app.models.user_role import UserRole
 from backend.app.schemas.order import (
     MockPaymentRequest,
     OrderCreate,
@@ -128,10 +134,7 @@ def update_order_status(
 ):
     order = (
         db.query(Order)
-        .filter(
-            Order.id == order_id,
-            Order.user_id == current_user.id,
-        )
+        .filter(Order.id == order_id)
         .first()
     )
 
@@ -140,6 +143,60 @@ def update_order_status(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Order not found",
         )
+
+    user_roles = (
+        db.query(Role.name)
+        .join(UserRole, UserRole.role_id == Role.id)
+        .filter(UserRole.user_id == current_user.id)
+        .all()
+    )
+
+    role_names = {role_name for (role_name,) in user_roles}
+
+    if "admin" not in role_names and "seller" not in role_names:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+
+    if "admin" not in role_names:
+        seller = (
+            db.query(Seller)
+            .filter(Seller.user_id == current_user.id)
+            .first()
+        )
+
+        if seller is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Seller account not found",
+            )
+
+        seller_owns_order = (
+            db.query(OrderItem)
+            .join(
+                ProductVariant,
+                OrderItem.variant_id == ProductVariant.id,
+            )
+            .join(
+                Product,
+                ProductVariant.product_id == Product.id,
+            )
+            .filter(
+                OrderItem.order_id == order.id,
+                Product.seller_id == seller.id,
+            )
+            .first()
+            is not None
+        )
+
+        if not seller_owns_order:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "You do not have permission to update this order"
+                ),
+            )
 
     try:
         new_status = OrderStatus(status_data.status.lower())

@@ -4,9 +4,11 @@ from backend.app.api.v1.auth import router as auth_router
 from backend.app.api.v1.cart import router as cart_router
 from backend.app.api.v1.categories import router as categories_router
 from backend.app.api.v1.health import router as health_router
+from backend.app.api.v1.inventory import router as inventory_router
 from backend.app.api.v1.orders import router as orders_router
 from backend.app.api.v1.products import router as products_router
 from backend.app.api.v1.users import router as users_router
+from backend.app.api.v1.variants import router as variants_router
 
 
 app = FastAPI(
@@ -37,6 +39,11 @@ app.include_router(
 )
 
 app.include_router(
+    variants_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
     categories_router,
     prefix="/api/v1",
 )
@@ -48,5 +55,10 @@ app.include_router(
 
 app.include_router(
     orders_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    inventory_router,
     prefix="/api/v1",
 )

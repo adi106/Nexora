@@ -12,6 +12,8 @@ from backend.app.models.order import Order, OrderStatus
 from backend.app.models.order_item import OrderItem
 from backend.app.models.product_variant import ProductVariant
 from backend.app.models.user import User
+from backend.app.models.category import Category
+from backend.app.models.product import Product
 
 
 def create_order_from_cart(
@@ -62,9 +64,13 @@ def create_order_from_cart(
     for cart_item in cart.items:
         variant = (
             db.query(ProductVariant)
+            .join(Product, ProductVariant.product_id == Product.id)
+            .join(Category, Product.category_id == Category.id)
             .filter(
                 ProductVariant.id == cart_item.variant_id,
                 ProductVariant.is_active.is_(True),
+                Product.is_active.is_(True),
+                Category.is_active.is_(True),
             )
             .first()
         )
