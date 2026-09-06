@@ -13,6 +13,10 @@ from backend.app.models.order import Order, OrderStatus
 from backend.app.models.order_item import OrderItem
 from backend.app.models.review import Review
 from backend.app.models.wishlist import WishlistItem
+from backend.app.models.product_interaction import (
+    ProductInteraction,
+    ProductInteractionType,
+)
 __all__ = [
     "User",
     "Role",

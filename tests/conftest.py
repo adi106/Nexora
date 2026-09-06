@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, delete, select
 from sqlalchemy.orm import Session
 from backend.app.models.review import Review
+from backend.app.models.product_interaction import ProductInteraction
 from backend.app.models.wishlist import WishlistItem
 from backend.app.core.security import hash_password
 from backend.app.db.dependencies import get_db
@@ -25,6 +26,7 @@ from backend.app.models import (
     UserRole,
     Review,
     WishlistItem,
+    ProductInteraction,
 )
 from backend.app.models.cart import CartStatus
 
@@ -346,6 +348,8 @@ def reset_order_state(test_db):
 
     # Remove wishlist items created by previous tests.
     test_db.execute(delete(WishlistItem))
+
+    test_db.execute(delete(ProductInteraction))
 
     # Remove all test orders and their items.
     test_db.execute(delete(OrderItem))
