@@ -12,6 +12,7 @@ from backend.app.models.cart_item import CartItem
 from backend.app.models.order import Order, OrderStatus
 from backend.app.models.order_item import OrderItem
 from backend.app.models.review import Review
+from backend.app.models.wishlist import WishlistItem
 __all__ = [
     "User",
     "Role",
@@ -29,4 +30,5 @@ __all__ = [
     "OrderStatus",
     "OrderItem",
     "Review",
+    "WishlistItem",
 ]

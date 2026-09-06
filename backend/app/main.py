@@ -10,6 +10,7 @@ from backend.app.api.v1.products import router as products_router
 from backend.app.api.v1.users import router as users_router
 from backend.app.api.v1.variants import router as variants_router
 from backend.app.api.v1.reviews import router as reviews_router
+from backend.app.api.v1.wishlist import router as wishlist_router
 
 
 app = FastAPI(
@@ -66,5 +67,10 @@ app.include_router(
 
 app.include_router(
     inventory_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    wishlist_router,
     prefix="/api/v1",
 )
