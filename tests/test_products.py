@@ -52,7 +52,16 @@ def test_list_products(client):
 
     data = response.json()
 
-    assert isinstance(data, list)
+    assert isinstance(data, dict)
+    assert "items" in data
+    assert "total" in data
+    assert "page" in data
+    assert "page_size" in data
+
+    assert isinstance(data["items"], list)
+    assert data["page"] == 1
+    assert data["page_size"] == 20
+    assert data["total"] >= len(data["items"])
     assert len(data) >= 1
 
 def test_list_products_excludes_inactive_product(client, test_db):
@@ -69,7 +78,7 @@ def test_list_products_excludes_inactive_product(client, test_db):
 
     data = response.json()
 
-    product_ids = {item["id"] for item in data}
+    product_ids = {item["id"] for item in data["items"]}
 
     assert str(product.id) not in product_ids
 
@@ -95,7 +104,7 @@ def test_list_products_excludes_product_with_inactive_category(client, test_db):
 
     data = response.json()
 
-    product_ids = {item["id"] for item in data}
+    product_ids = {item["id"] for item in data["items"]}
 
     assert str(product.id) not in product_ids
 
@@ -1151,3 +1160,723 @@ def test_update_product_variant_status_rejects_nonexistent_variant(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Product variant not found"
+
+def test_list_products_pagination(client, test_db):
+    response = client.get(
+        "/api/v1/products",
+        params={
+            "page": 1,
+            "page_size": 2,
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["page"] == 1
+    assert data["page_size"] == 2
+    assert data["total"] >= 2
+    assert len(data["items"]) == 2
+
+
+def test_list_products_second_page(client, test_db):
+    first_response = client.get(
+        "/api/v1/products",
+        params={
+            "page": 1,
+            "page_size": 2,
+        },
+    )
+
+    assert first_response.status_code == 200
+
+    first_data = first_response.json()
+
+    second_response = client.get(
+        "/api/v1/products",
+        params={
+            "page": 2,
+            "page_size": 2,
+        },
+    )
+
+    assert second_response.status_code == 200
+
+    second_data = second_response.json()
+
+    assert second_data["page"] == 2
+    assert second_data["page_size"] == 2
+
+    first_ids = {item["id"] for item in first_data["items"]}
+    second_ids = {item["id"] for item in second_data["items"]}
+
+    assert first_ids.isdisjoint(second_ids)
+
+
+def test_list_products_rejects_invalid_page(client):
+    response = client.get(
+        "/api/v1/products",
+        params={
+            "page": 0,
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_list_products_rejects_invalid_page_size(client):
+    response = client.get(
+        "/api/v1/products",
+        params={
+            "page_size": 101,
+        },
+    )
+
+    assert response.status_code == 422
+
+def test_list_products_sort_price_ascending(client):
+    response = client.get(
+        "/api/v1/products",
+        params={"sort": "price_asc"},
+    )
+
+    assert response.status_code == 200
+
+    prices = [
+        float(item["base_price"])
+        for item in response.json()["items"]
+    ]
+
+    assert prices == sorted(prices)
+
+
+def test_list_products_sort_price_descending(client):
+    response = client.get(
+        "/api/v1/products",
+        params={"sort": "price_desc"},
+    )
+
+    assert response.status_code == 200
+
+    prices = [
+        float(item["base_price"])
+        for item in response.json()["items"]
+    ]
+
+    assert prices == sorted(prices, reverse=True)
+
+
+def test_list_products_rejects_invalid_sort(client):
+    response = client.get(
+        "/api/v1/products",
+        params={"sort": "invalid"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid sort option"
+
+def test_list_products_filters_by_category(client, test_db):
+    product = get_test_product(test_db)
+
+    response = client.get(
+        "/api/v1/products",
+        params={"category_id": product.category_id},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total"] >= 1
+
+    for item in data["items"]:
+        assert item["category_id"] == product.category_id
+
+def test_list_products_rejects_invalid_category_id(client):
+    response = client.get(
+        "/api/v1/products",
+        params={"category_id": 0},
+    )
+
+    assert response.status_code == 422
+
+def test_list_products_filters_by_seller(client, test_db):
+    product = get_test_product(test_db)
+
+    response = client.get(
+        "/api/v1/products",
+        params={"seller_id": product.seller_id},
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total"] >= 1
+
+    for item in data["items"]:
+        assert item["seller_id"] == product.seller_id
+
+
+def test_list_products_rejects_invalid_seller_id(client):
+    response = client.get(
+        "/api/v1/products",
+        params={"seller_id": 0},
+    )
+
+    assert response.status_code == 422
+
+def test_list_products_filters_by_min_price(client, test_db):
+    product = get_test_product(test_db)
+
+    response = client.get(
+        "/api/v1/products",
+        params={
+            "min_price": str(product.base_price),
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    for item in data["items"]:
+        assert Decimal(item["base_price"]) >= product.base_price
+
+
+def test_list_products_filters_by_max_price(client, test_db):
+    product = get_test_product(test_db)
+
+    response = client.get(
+        "/api/v1/products",
+        params={
+            "max_price": str(product.base_price),
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    for item in data["items"]:
+        assert Decimal(item["base_price"]) <= product.base_price
+
+
+def test_list_products_filters_by_price_range(client, test_db):
+    response = client.get(
+        "/api/v1/products",
+        params={
+            "min_price": "500",
+            "max_price": "1500",
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    for item in data["items"]:
+        price = Decimal(item["base_price"])
+        assert Decimal("500") <= price <= Decimal("1500")
+
+
+def test_list_products_rejects_invalid_min_price(client):
+    response = client.get(
+        "/api/v1/products",
+        params={"min_price": 0},
+    )
+
+    assert response.status_code == 422
+
+
+def test_list_products_rejects_invalid_max_price(client):
+    response = client.get(
+        "/api/v1/products",
+        params={"max_price": 0},
+    )
+
+    assert response.status_code == 422
+
+def test_list_products_in_stock_filter(client, test_db):
+    product = test_db.query(Product).first()
+    variant = ProductVariant(
+        product_id=product.id,
+        sku="IN-STOCK-FILTER-001",
+        price=product.base_price,
+        attributes={},
+        is_active=True,
+    )
+    test_db.add(variant)
+    test_db.flush()
+
+    inventory = Inventory(
+        variant_id=variant.id,
+        quantity=10,
+        reserved_quantity=2,
+        is_active=True,
+    )
+    test_db.add(inventory)
+    test_db.commit()
+
+    response = client.get("/api/v1/products?in_stock=true")
+
+    assert response.status_code == 200
+
+    data = response.json()
+    product_ids = [item["id"] for item in data["items"]]
+
+    assert str(product.id) in product_ids
+
+
+def test_list_products_in_stock_excludes_product_with_fully_reserved_variant(
+    client, test_db
+):
+    product = test_db.query(Product).first()
+
+    for variant in product.variants:
+        inventory = test_db.query(Inventory).filter(
+            Inventory.variant_id == variant.id
+        ).first()
+
+        if inventory is not None:
+            inventory.reserved_quantity = inventory.quantity
+
+    test_db.commit()
+
+    response = client.get("/api/v1/products?in_stock=true")
+
+    assert response.status_code == 200
+
+    data = response.json()
+    product_ids = [item["id"] for item in data["items"]]
+
+    assert str(product.id) not in product_ids
+
+def test_get_product_includes_variant_availability(client, test_db):
+    product = get_test_product(test_db)
+
+    variant = test_db.scalar(
+        select(ProductVariant).where(
+            ProductVariant.sku == "NEXORA-PRO-16-512"
+        )
+    )
+
+    assert variant is not None
+    assert variant.product_id == product.id
+
+    inventory = test_db.scalar(
+        select(Inventory).where(
+            Inventory.variant_id == variant.id
+        )
+    )
+
+    assert inventory is not None
+
+    inventory.quantity = 10
+    inventory.reserved_quantity = 3
+    inventory.is_active = True
+    variant.is_active = True
+    test_db.commit()
+
+    response = client.get(
+        f"/api/v1/products/{product.id}"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    variants = data["variants"]
+
+    matching_variant = next(
+        item for item in variants
+        if item["id"] == str(variant.id)
+    )
+
+    assert matching_variant["sku"] == variant.sku
+    assert matching_variant["available_quantity"] == 7
+    assert "reserved_quantity" not in matching_variant
+
+def test_get_product_inactive_variant_has_zero_availability(client, test_db):
+    product = get_test_product(test_db)
+
+    variant = test_db.scalar(
+        select(ProductVariant).where(
+            ProductVariant.sku == "NEXORA-PRO-16-512"
+        )
+    )
+
+    assert variant is not None
+
+    inventory = test_db.scalar(
+        select(Inventory).where(
+            Inventory.variant_id == variant.id
+        )
+    )
+
+    assert inventory is not None
+
+    variant.is_active = False
+    inventory.quantity = 10
+    inventory.reserved_quantity = 0
+    inventory.is_active = True
+
+    test_db.commit()
+
+    response = client.get(
+        f"/api/v1/products/{product.id}"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    matching_variant = next(
+        item for item in data["variants"]
+        if item["id"] == str(variant.id)
+    )
+
+    assert matching_variant["is_active"] is False
+    assert matching_variant["available_quantity"] == 0
+
+    # Restore canonical state.
+    variant.is_active = True
+    test_db.commit()
+
+def test_get_product_inactive_inventory_has_zero_availability(client, test_db):
+    product = get_test_product(test_db)
+
+    variant = test_db.scalar(
+        select(ProductVariant).where(
+            ProductVariant.sku == "NEXORA-PRO-16-512"
+        )
+    )
+
+    assert variant is not None
+
+    inventory = test_db.scalar(
+        select(Inventory).where(
+            Inventory.variant_id == variant.id
+        )
+    )
+
+    assert inventory is not None
+
+    variant.is_active = True
+    inventory.quantity = 10
+    inventory.reserved_quantity = 0
+    inventory.is_active = False
+
+    test_db.commit()
+
+    response = client.get(
+        f"/api/v1/products/{product.id}"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    matching_variant = next(
+        item for item in data["variants"]
+        if item["id"] == str(variant.id)
+    )
+
+    assert matching_variant["is_active"] is True
+    assert matching_variant["available_quantity"] == 0
+
+    # Restore canonical state.
+    inventory.is_active = True
+    test_db.commit()
+
+def test_get_product_never_returns_negative_availability(client, test_db):
+    product = get_test_product(test_db)
+
+    variant = test_db.scalar(
+        select(ProductVariant).where(
+            ProductVariant.sku == "NEXORA-PRO-16-512"
+        )
+    )
+
+    assert variant is not None
+
+    inventory = test_db.scalar(
+        select(Inventory).where(
+            Inventory.variant_id == variant.id
+        )
+    )
+
+    assert inventory is not None
+
+    variant.is_active = True
+    inventory.quantity = 2
+    inventory.reserved_quantity = 5
+    inventory.is_active = True
+
+    test_db.commit()
+
+    response = client.get(
+        f"/api/v1/products/{product.id}"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    matching_variant = next(
+        item for item in data["variants"]
+        if item["id"] == str(variant.id)
+    )
+
+    assert matching_variant["available_quantity"] == 0
+
+    # Restore canonical state.
+    inventory.quantity = 0
+    inventory.reserved_quantity = 0
+    test_db.commit()
+
+def test_list_category_products_returns_own_products(client, test_db):
+    product = get_test_product(test_db)
+
+    category = test_db.scalar(
+        select(Category).where(
+            Category.id == product.category_id
+        )
+    )
+
+    assert category is not None
+    assert category.is_active is True
+
+    response = client.get(
+        f"/api/v1/categories/{category.slug}/products"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert "items" in data
+    assert "total" in data
+    assert "page" in data
+    assert "page_size" in data
+
+    product_ids = {
+        item["id"]
+        for item in data["items"]
+    }
+
+    assert str(product.id) in product_ids
+
+def test_list_category_products_includes_active_descendants(client, test_db):
+    parent = Category(
+        name="Test Electronics",
+        slug="test-electronics",
+        description="Parent test category",
+        is_active=True,
+    )
+    test_db.add(parent)
+    test_db.flush()
+
+    child = Category(
+        name="Test Laptops",
+        slug="test-laptops",
+        parent_id=parent.id,
+        description="Child test category",
+        is_active=True,
+    )
+    test_db.add(child)
+    test_db.flush()
+
+    product = get_test_product(test_db)
+    original_category_id = product.category_id
+    product.category_id = child.id
+
+    test_db.commit()
+
+    response = client.get(
+        f"/api/v1/categories/{parent.slug}/products"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    product_ids = {
+        item["id"]
+        for item in data["items"]
+    }
+
+    assert str(product.id) in product_ids
+
+    # Restore canonical product state.
+    product.category_id = original_category_id
+    test_db.delete(child)
+    test_db.delete(parent)
+    test_db.commit()
+
+def test_list_category_products_excludes_inactive_descendants(client, test_db):
+    parent = Category(
+        name="Test Electronics Inactive",
+        slug="test-electronics-inactive",
+        description="Parent test category",
+        is_active=True,
+    )
+    test_db.add(parent)
+    test_db.flush()
+
+    child = Category(
+        name="Test Laptops Inactive",
+        slug="test-laptops-inactive",
+        parent_id=parent.id,
+        description="Inactive child test category",
+        is_active=False,
+    )
+    test_db.add(child)
+    test_db.flush()
+
+    product = get_test_product(test_db)
+    original_category_id = product.category_id
+    product.category_id = child.id
+
+    test_db.commit()
+
+    response = client.get(
+        f"/api/v1/categories/{parent.slug}/products"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    product_ids = {
+        item["id"]
+        for item in data["items"]
+    }
+
+    assert str(product.id) not in product_ids
+
+    # Restore canonical product state.
+    product.category_id = original_category_id
+    test_db.delete(child)
+    test_db.delete(parent)
+    test_db.commit()
+
+def test_list_category_products_returns_not_found_for_unknown_slug(client):
+    response = client.get(
+        "/api/v1/categories/category-that-does-not-exist/products"
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Category not found"
+
+def test_list_products_searches_name(client):
+    response = client.get("/api/v1/products?search=NEXORA%20Pro")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total"] >= 1
+    assert any(
+        item["name"] == "NEXORA Pro Laptop"
+        for item in data["items"]
+    )
+
+
+def test_list_products_searches_description(client):
+    response = client.get("/api/v1/products?search=Test%20product")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total"] >= 1
+    assert any(
+        item["name"] == "NEXORA Pro Laptop"
+        for item in data["items"]
+    )
+
+
+def test_list_products_search_is_case_insensitive(client):
+    response = client.get("/api/v1/products?search=nexora%20pro")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total"] >= 1
+    assert any(
+        item["name"] == "NEXORA Pro Laptop"
+        for item in data["items"]
+    )
+
+
+def test_list_products_search_no_match(client):
+    response = client.get("/api/v1/products?search=DefinitelyNotARealProduct")
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total"] == 0
+    assert data["items"] == []
+
+def test_list_products_pagination(client):
+    first_response = client.get(
+        "/api/v1/products?page=1&page_size=1"
+    )
+
+    second_response = client.get(
+        "/api/v1/products?page=2&page_size=1"
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+
+    first_data = first_response.json()
+    second_data = second_response.json()
+
+    assert first_data["page"] == 1
+    assert second_data["page"] == 2
+    assert first_data["page_size"] == 1
+    assert second_data["page_size"] == 1
+
+    assert len(first_data["items"]) <= 1
+    assert len(second_data["items"]) <= 1
+
+    if first_data["items"] and second_data["items"]:
+        assert first_data["items"][0]["id"] != second_data["items"][0]["id"]
+
+def test_list_products_invalid_sort(client):
+    response = client.get("/api/v1/products?sort=invalid")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid sort option"
+
+def test_list_products_rejects_invalid_pagination(client):
+    response = client.get("/api/v1/products?page=0")
+
+    assert response.status_code == 422
+
+    response = client.get("/api/v1/products?page_size=101")
+
+    assert response.status_code == 422
+
+def test_list_products_combines_search_and_price_filter(client):
+    response = client.get(
+        "/api/v1/products"
+        "?search=NEXORA%20Pro"
+        "&min_price=1"
+        "&max_price=100000"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total"] >= 1
+
+    for item in data["items"]:
+        assert "nexora pro" in item["name"].lower()
+        assert 1 <= float(item["base_price"]) <= 100000

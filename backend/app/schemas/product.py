@@ -35,3 +35,24 @@ class ProductUpdate(BaseModel):
     description: str | None = None
     base_price: Decimal | None = Field(default=None, gt=0)
     category_id: int | None = None
+
+class ProductListResponse(BaseModel):
+    items: list[ProductResponse]
+    total: int
+    page: int
+    page_size: int
+
+class ProductDetailVariantResponse(BaseModel):
+    id: uuid.UUID
+    product_id: uuid.UUID
+    sku: str
+    price: Decimal
+    attributes: dict
+    is_active: bool
+    available_quantity: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProductDetailResponse(ProductResponse):
+    variants: list[ProductDetailVariantResponse]
