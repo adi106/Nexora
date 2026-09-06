@@ -1,6 +1,7 @@
 from uuid import UUID
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import and_, case, func
 from sqlalchemy.orm import Session
 
 from backend.app.core.security import require_role
@@ -59,10 +60,32 @@ def list_products(
         query = query.filter(Product.base_price <= max_price)
 
     if search is not None:
-        search_term = f"%{search.strip()}%"
+        normalized_search = " ".join(search.split())
+
+        if not normalized_search:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Search query cannot be empty",
+            )
+
+        search_tokens = normalized_search.split()
+
+        name_matches = and_(
+            *[
+                Product.name.ilike(f"%{token}%")
+                for token in search_tokens
+            ]
+        )
+
+        description_matches = and_(
+            *[
+                Product.description.ilike(f"%{token}%")
+                for token in search_tokens
+            ]
+        )
+
         query = query.filter(
-            Product.name.ilike(search_term)
-            | Product.description.ilike(search_term)
+            name_matches | description_matches
         )
 
     if in_stock is True:
@@ -85,10 +108,61 @@ def list_products(
 
     if sort == "price_asc":
         query = query.order_by(Product.base_price.asc())
+
     elif sort == "price_desc":
         query = query.order_by(Product.base_price.desc())
+
     elif sort == "newest":
-        query = query.order_by(Product.created_at.desc())
+        if search is not None:
+            normalized_search_lower = normalized_search.lower()
+
+            exact_name_score = case(
+                (
+                    func.lower(Product.name) == normalized_search_lower,
+                    100,
+                ),
+                else_=0,
+            )
+
+            prefix_name_score = case(
+                (
+                    Product.name.ilike(f"{normalized_search}%"),
+                    50,
+                ),
+                else_=0,
+            )
+
+            phrase_name_score = case(
+                (
+                    Product.name.ilike(f"%{normalized_search}%"),
+                    25,
+                ),
+                else_=0,
+            )
+
+            token_name_score = sum(
+                case(
+                    (
+                        Product.name.ilike(f"%{token}%"),
+                        10,
+                    ),
+                    else_=0,
+                )
+                for token in search_tokens
+            )
+
+            query = query.order_by(
+                (
+                    exact_name_score
+                    + prefix_name_score
+                    + phrase_name_score
+                    + token_name_score
+                ).desc(),
+                Product.created_at.desc(),
+            )
+        else:
+            query = query.order_by(Product.created_at.desc())
+
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -1880,3 +1880,157 @@ def test_list_products_combines_search_and_price_filter(client):
     for item in data["items"]:
         assert "nexora pro" in item["name"].lower()
         assert 1 <= float(item["base_price"]) <= 100000
+
+    def test_list_products_normalizes_search_whitespace(client):
+        response = client.get(
+        "/api/v1/products?search=%20%20NEXORA%20%20%20Pro%20%20"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total"] >= 1
+    assert any(
+        "nexora pro" in item["name"].lower()
+        for item in data["items"]
+    )
+
+
+def test_list_products_supports_multi_token_search(client):
+    response = client.get(
+        "/api/v1/products?search=laptop%2016gb"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total"] >= 1
+
+    for item in data["items"]:
+        searchable_text = (
+            f"{item['name']} {item.get('description', '')}"
+        ).lower()
+
+        assert "laptop" in searchable_text
+        assert "16gb" in searchable_text
+
+
+def test_list_products_ranks_exact_name_match_first(client):
+    response = client.get(
+        "/api/v1/products?search=NEXORA%20Pro"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total"] >= 1
+
+    first_product = data["items"][0]
+
+    assert first_product["name"].lower() == "nexora pro laptop"
+
+
+def test_list_products_rejects_whitespace_only_search(client):
+    response = client.get(
+        "/api/v1/products?search=%20%20%20"
+    )
+
+    assert response.status_code == 422
+
+
+def test_list_products_search_preserves_pagination(client):
+    response = client.get(
+        "/api/v1/products"
+        "?search=NEXORA"
+        "&page=1"
+        "&page_size=1"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total"] >= 1
+    assert len(data["items"]) == 1
+    assert data["page"] == 1
+    assert data["page_size"] == 1
+
+def test_list_products_normalizes_search_whitespace(client):
+    response = client.get(
+        "/api/v1/products?search=%20%20NEXORA%20%20%20Pro%20%20"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total"] >= 1
+    assert any(
+        "nexora pro" in item["name"].lower()
+        for item in data["items"]
+    )
+
+
+def test_list_products_supports_multi_token_search(client):
+    response = client.get(
+        "/api/v1/products?search=NEXORA%20Laptop"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total"] >= 1
+
+    for item in data["items"]:
+        searchable_text = (
+            f"{item['name']} {item.get('description', '')}"
+        ).lower()
+
+        assert "nexora" in searchable_text
+        assert "laptop" in searchable_text
+
+
+def test_list_products_ranks_exact_name_match_first(client):
+    response = client.get(
+        "/api/v1/products?search=NEXORA%20Pro"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total"] >= 1
+
+    first_product = data["items"][0]
+
+    assert first_product["name"].lower() == "nexora pro laptop"
+
+
+def test_list_products_rejects_whitespace_only_search(client):
+    response = client.get(
+        "/api/v1/products?search=%20%20%20"
+    )
+
+    assert response.status_code == 422
+
+
+def test_list_products_search_preserves_pagination(client):
+    response = client.get(
+        "/api/v1/products"
+        "?search=NEXORA"
+        "&page=1"
+        "&page_size=1"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["total"] >= 1
+    assert len(data["items"]) == 1
+    assert data["page"] == 1
+    assert data["page_size"] == 1
