@@ -16,3 +16,21 @@ export async function getCategoryProducts(
   });
   return { ...data, items: data.items.map((product) => ({ ...product, base_price: Number(product.base_price) })) };
 }
+
+export interface CategoryInput {
+  name: string;
+  slug: string;
+  description?: string | null;
+  parent_id?: number | null;
+  is_active: boolean;
+}
+
+export async function createCategory(payload: CategoryInput): Promise<Category> {
+  const { data } = await apiClient.post<Category>("/categories", payload);
+  return data;
+}
+
+export async function setCategoryActive(categoryId: number, isActive: boolean): Promise<Category> {
+  const { data } = await apiClient.patch<Category>(`/categories/${categoryId}`, { is_active: isActive });
+  return data;
+}

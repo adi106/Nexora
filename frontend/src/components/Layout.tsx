@@ -55,7 +55,7 @@ export function Layout() {
               </NavLink>
             )}
             {isAdmin && (
-              <NavLink to="/admin" className="nav-link">
+              <NavLink to="/admin" className="nav-link nav-admin">
                 Admin
               </NavLink>
             )}

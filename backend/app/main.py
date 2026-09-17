@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.v1.addresses import router as addresses_router
+from backend.app.api.v1.admin import router as admin_router
 from backend.app.api.v1.auth import router as auth_router
 from backend.app.api.v1.cart import router as cart_router
 from backend.app.api.v1.categories import router as categories_router
@@ -102,5 +103,10 @@ app.include_router(
 
 app.include_router(
     sellers_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    admin_router,
     prefix="/api/v1",
 )

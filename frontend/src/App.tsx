@@ -5,6 +5,7 @@ import { WishlistProvider } from "./context/WishlistContext";
 import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { SellerRoute } from "./components/SellerRoute";
+import { AdminRoute } from "./components/AdminRoute";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
@@ -20,7 +21,12 @@ import { SellerDashboardPage } from "./pages/seller/SellerDashboardPage";
 import { SellerProductsPage } from "./pages/seller/SellerProductsPage";
 import { SellerProductFormPage } from "./pages/seller/SellerProductFormPage";
 import { SellerOrdersPage } from "./pages/seller/SellerOrdersPage";
-import { ComingSoonPage } from "./pages/ComingSoonPage";
+import { AdminDashboardPage } from "./pages/admin/AdminDashboardPage";
+import { AdminUsersPage } from "./pages/admin/AdminUsersPage";
+import { AdminSellersPage } from "./pages/admin/AdminSellersPage";
+import { AdminProductsPage } from "./pages/admin/AdminProductsPage";
+import { AdminCategoriesPage } from "./pages/admin/AdminCategoriesPage";
+import { AdminOrdersPage } from "./pages/admin/AdminOrdersPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 
 function App() {
@@ -126,7 +132,51 @@ function App() {
                 />
                 <Route
                   path="admin"
-                  element={<ComingSoonPage title="Admin Dashboard" phase="Phase 9" />}
+                  element={
+                    <AdminRoute>
+                      <AdminDashboardPage />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="admin/users"
+                  element={
+                    <AdminRoute>
+                      <AdminUsersPage />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="admin/sellers"
+                  element={
+                    <AdminRoute>
+                      <AdminSellersPage />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="admin/products"
+                  element={
+                    <AdminRoute>
+                      <AdminProductsPage />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="admin/categories"
+                  element={
+                    <AdminRoute>
+                      <AdminCategoriesPage />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="admin/orders"
+                  element={
+                    <AdminRoute>
+                      <AdminOrdersPage />
+                    </AdminRoute>
+                  }
                 />
                 <Route path="*" element={<NotFoundPage />} />
               </Route>

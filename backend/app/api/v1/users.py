@@ -3,26 +3,15 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.security import get_current_user, hash_password
 from backend.app.db.dependencies import get_db
-from backend.app.models.role import Role
 from backend.app.models.user import User
-from backend.app.models.user_role import UserRole
 from backend.app.schemas.user import UserCreate, UserResponse
+from backend.app.services.role_service import get_role_names
 
 
 router = APIRouter(
     prefix="/users",
     tags=["Users"],
 )
-
-
-def _role_names(db: Session, user_id) -> list[str]:
-    return [
-        name
-        for (name,) in db.query(Role.name)
-        .join(UserRole, UserRole.role_id == Role.id)
-        .filter(UserRole.user_id == user_id)
-        .all()
-    ]
 
 
 @router.post(
@@ -57,5 +46,5 @@ def get_me(
     db: Session = Depends(get_db),
 ):
     response = UserResponse.model_validate(current_user)
-    response.roles = _role_names(db, current_user.id)
+    response.roles = get_role_names(db, current_user.id)
     return response
