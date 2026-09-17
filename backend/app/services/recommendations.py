@@ -1,11 +1,20 @@
+import uuid
+
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from backend.app.models.order import Order, OrderStatus
 from backend.app.models.order_item import OrderItem
 from backend.app.models.product import Product
 from backend.app.models.product_variant import ProductVariant
 from backend.app.models.wishlist import WishlistItem
+
+
+_FULFILLED_STATUSES = [
+    OrderStatus.PAID,
+    OrderStatus.SHIPPED,
+    OrderStatus.DELIVERED,
+]
 
 
 def get_popular_products(
@@ -296,3 +305,95 @@ def get_recommendations(
             return recommendations
 
     return recommendations
+
+
+def get_similar_products(
+    db: Session,
+    product_id: uuid.UUID,
+    limit: int = 10,
+) -> list[Product]:
+    """
+    Item-based collaborative filtering: "customers who bought this also
+    bought" other products, ranked by co-occurrence in fulfilled orders.
+
+    Falls back to same-category products, then overall popularity, when
+    there isn't enough co-purchase data yet (cold start).
+    """
+
+    orders_with_product = (
+        db.query(Order.id)
+        .join(OrderItem, OrderItem.order_id == Order.id)
+        .join(ProductVariant, OrderItem.variant_id == ProductVariant.id)
+        .filter(
+            ProductVariant.product_id == product_id,
+            Order.status.in_(_FULFILLED_STATUSES),
+        )
+        .distinct()
+    )
+
+    other_variant = aliased(ProductVariant)
+    other_order_item = aliased(OrderItem)
+
+    co_purchase_counts = (
+        db.query(
+            Product.id,
+            func.count(func.distinct(other_order_item.order_id)).label("co_occurrence"),
+        )
+        .join(other_variant, other_variant.product_id == Product.id)
+        .join(other_order_item, other_order_item.variant_id == other_variant.id)
+        .filter(
+            other_order_item.order_id.in_(orders_with_product),
+            Product.id != product_id,
+            Product.is_active.is_(True),
+        )
+        .group_by(Product.id)
+        .order_by(func.count(func.distinct(other_order_item.order_id)).desc())
+        .limit(limit)
+        .all()
+    )
+
+    ordered_ids = [pid for pid, _count in co_purchase_counts]
+    similar: list[Product] = []
+
+    if ordered_ids:
+        products_by_id = {
+            product.id: product
+            for product in db.query(Product).filter(Product.id.in_(ordered_ids)).all()
+        }
+        similar = [products_by_id[pid] for pid in ordered_ids if pid in products_by_id]
+
+    if len(similar) >= limit:
+        return similar[:limit]
+
+    seen_ids = {product.id for product in similar}
+
+    source_product = db.query(Product).filter(Product.id == product_id).first()
+    if source_product is not None:
+        same_category = (
+            db.query(Product)
+            .filter(
+                Product.category_id == source_product.category_id,
+                Product.id != product_id,
+                Product.is_active.is_(True),
+                ~Product.id.in_(seen_ids) if seen_ids else True,
+            )
+            .order_by(Product.created_at.desc())
+            .limit(limit - len(similar))
+            .all()
+        )
+        for product in same_category:
+            if product.id not in seen_ids:
+                similar.append(product)
+                seen_ids.add(product.id)
+
+    if len(similar) >= limit:
+        return similar[:limit]
+
+    for product in get_popular_products(db, limit=limit):
+        if product.id != product_id and product.id not in seen_ids:
+            similar.append(product)
+            seen_ids.add(product.id)
+        if len(similar) >= limit:
+            break
+
+    return similar

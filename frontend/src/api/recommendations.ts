@@ -6,6 +6,13 @@ export async function getRecommendations(limit = 10): Promise<Product[]> {
   return data.map((product) => ({ ...product, base_price: Number(product.base_price) }));
 }
 
+export async function getSimilarProducts(productId: string, limit = 8): Promise<Product[]> {
+  const { data } = await apiClient.get<Product[]>(`/recommendations/similar/${productId}`, {
+    params: { limit },
+  });
+  return data.map((product) => ({ ...product, base_price: Number(product.base_price) }));
+}
+
 export async function recordProductView(productId: string): Promise<void> {
   await apiClient.post("/recommendations/interactions", {
     product_id: productId,

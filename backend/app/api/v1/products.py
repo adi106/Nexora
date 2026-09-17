@@ -107,10 +107,10 @@ def list_products(
     total = query.count()
 
     if sort == "price_asc":
-        query = query.order_by(Product.base_price.asc())
+        query = query.order_by(Product.base_price.asc(), Product.id.asc())
 
     elif sort == "price_desc":
-        query = query.order_by(Product.base_price.desc())
+        query = query.order_by(Product.base_price.desc(), Product.id.asc())
 
     elif sort == "newest":
         if search is not None:
@@ -159,9 +159,10 @@ def list_products(
                     + token_name_score
                 ).desc(),
                 Product.created_at.desc(),
+                Product.id.asc(),
             )
         else:
-            query = query.order_by(Product.created_at.desc())
+            query = query.order_by(Product.created_at.desc(), Product.id.asc())
 
     else:
         raise HTTPException(

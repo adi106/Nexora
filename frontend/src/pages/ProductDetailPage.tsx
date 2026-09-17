@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useParams } from "react-router-dom";
 import { getProduct } from "../api/products";
-import { getRecommendations, recordProductView } from "../api/recommendations";
+import { getSimilarProducts, recordProductView } from "../api/recommendations";
 import {
   createReview,
   deleteReview,
@@ -53,11 +53,9 @@ export function ProductDetailPage() {
 
       if (isAuthenticated) {
         recordProductView(productId).catch(() => {});
-        const recommendations = await getRecommendations(8);
-        setRelated(recommendations.filter((p) => p.id !== productId));
-      } else {
-        setRelated([]);
       }
+      const similar = await getSimilarProducts(productId, 8);
+      setRelated(similar);
     } catch (err) {
       setError(extractErrorMessage(err));
     } finally {

@@ -5,11 +5,12 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.security import get_current_user
 from backend.app.db.dependencies import get_db
+from backend.app.models.category import Category
 from backend.app.models.product import Product
 from backend.app.models.product_interaction import ProductInteraction
 from backend.app.models.user import User
 from backend.app.schemas.product import ProductResponse
-from backend.app.services.recommendations import get_recommendations
+from backend.app.services.recommendations import get_recommendations, get_similar_products
 from backend.app.schemas.recommendation import (
     ProductInteractionCreate,
     ProductInteractionResponse,
@@ -34,6 +35,35 @@ def get_product_recommendations(
         current_user.id,
         limit=limit,
     )
+
+
+@router.get(
+    "/similar/{product_id}",
+    response_model=list[ProductResponse],
+)
+def get_similar_product_recommendations(
+    product_id: UUID,
+    limit: int = Query(default=10, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    product = (
+        db.query(Product)
+        .join(Category, Product.category_id == Category.id)
+        .filter(
+            Product.id == product_id,
+            Product.is_active.is_(True),
+            Category.is_active.is_(True),
+        )
+        .first()
+    )
+
+    if product is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found",
+        )
+
+    return get_similar_products(db, product_id, limit=limit)
 
 
 @router.post(
