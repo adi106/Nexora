@@ -39,3 +39,15 @@ class ProductVariantResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class VariantWithProductResponse(BaseModel):
+    id: uuid.UUID
+    product_id: uuid.UUID
+    product_name: str
+    product_slug: str
+    sku: str
+    price: Decimal
+    attributes: dict
+    is_active: bool
+    available_quantity: int

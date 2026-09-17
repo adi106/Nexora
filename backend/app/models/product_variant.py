@@ -52,6 +52,7 @@ class ProductVariant(Base):
         default=True,
         server_default="true",
         nullable=False,
+        index=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(

@@ -15,9 +15,10 @@ class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    email: EmailStr
+    email: str
     first_name: str
     last_name: str
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    roles: list[str] = []
