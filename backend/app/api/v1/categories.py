@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 from backend.app.core.security import require_role
 from backend.app.db.dependencies import get_db
@@ -27,8 +27,13 @@ router = APIRouter(
     response_model=list[CategoryResponse],
 )
 def list_categories(
+    response: Response,
     db: Session = Depends(get_db),
 ):
+    # Categories change rarely; a short cache cuts DB load from the
+    # category list being fetched on almost every page.
+    response.headers["Cache-Control"] = "public, max-age=300"
+
     categories = (
         db.query(Category)
         .filter(Category.is_active.is_(True))

@@ -1,6 +1,6 @@
 from uuid import UUID
 from decimal import Decimal
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import and_, case, func
 from sqlalchemy.orm import Session
 
@@ -27,6 +27,7 @@ router = APIRouter(prefix="/products", tags=["Products"])
 
 @router.get("", response_model=ProductListResponse)
 def list_products(
+    response: Response,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     sort: str = Query(default="newest"),
@@ -38,6 +39,11 @@ def list_products(
     search: str | None = Query(default=None, min_length=1),
     db: Session = Depends(get_db),
 ):
+    # Short cache: cheap for a shared/browser cache to hold onto for a
+    # few seconds under load, short enough that price/stock changes are
+    # never stale for long.
+    response.headers["Cache-Control"] = "public, max-age=15"
+
     query = (
         db.query(Product)
         .join(Category, Product.category_id == Category.id)
@@ -186,7 +192,9 @@ def list_products(
 
 
 @router.get("/{product_id}", response_model=ProductDetailResponse)
-def get_product(product_id: UUID, db: Session = Depends(get_db)):
+def get_product(product_id: UUID, response: Response, db: Session = Depends(get_db)):
+    response.headers["Cache-Control"] = "public, max-age=15"
+
     product = (
         db.query(Product)
         .join(Category, Product.category_id == Category.id)
