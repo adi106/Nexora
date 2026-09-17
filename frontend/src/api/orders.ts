@@ -22,3 +22,13 @@ export async function getOrder(orderId: string): Promise<Order> {
   const { data } = await apiClient.get<Order>(`/orders/${orderId}`);
   return normalizeOrder(data);
 }
+
+export async function createOrder(addressId: string): Promise<Order> {
+  const { data } = await apiClient.post<Order>("/orders", { address_id: addressId });
+  return normalizeOrder(data);
+}
+
+export async function payForOrder(orderId: string, succeed: boolean): Promise<Order> {
+  const { data } = await apiClient.post<Order>(`/orders/${orderId}/payment`, { succeed });
+  return normalizeOrder(data);
+}

@@ -145,6 +145,30 @@ export interface ProductRating {
   review_count: number;
 }
 
+export interface Address {
+  id: string;
+  user_id: string;
+  address_line1: string;
+  address_line2: string | null;
+  city: string;
+  region: string | null;
+  postal_code: string;
+  country_code: string;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AddressInput {
+  address_line1: string;
+  address_line2?: string | null;
+  city: string;
+  region?: string | null;
+  postal_code: string;
+  country_code: string;
+  is_default?: boolean;
+}
+
 export interface WishlistItem {
   id: string;
   user_id: string;

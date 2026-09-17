@@ -36,18 +36,20 @@ export function OrdersPage() {
         <ul className="order-list">
           {orders.map((order) => (
             <li key={order.id} className="order-card">
-              <div className="order-card-header">
-                <span>Order placed {formatDate(order.created_at)}</span>
-                <span className={`order-status status-${order.status}`}>{order.status}</span>
-              </div>
-              <ul className="order-items">
-                {order.items.map((item) => (
-                  <li key={item.id}>
-                    {item.product_name} × {item.quantity} — {formatPrice(item.subtotal)}
-                  </li>
-                ))}
-              </ul>
-              <p className="order-total">Total: {formatPrice(order.total_amount)}</p>
+              <Link to={`/orders/${order.id}`} className="order-card-link">
+                <div className="order-card-header">
+                  <span>Order placed {formatDate(order.created_at)}</span>
+                  <span className={`order-status status-${order.status}`}>{order.status}</span>
+                </div>
+                <ul className="order-items">
+                  {order.items.map((item) => (
+                    <li key={item.id}>
+                      {item.product_name} × {item.quantity} — {formatPrice(item.subtotal)}
+                    </li>
+                  ))}
+                </ul>
+                <p className="order-total">Total: {formatPrice(order.total_amount)}</p>
+              </Link>
             </li>
           ))}
         </ul>
