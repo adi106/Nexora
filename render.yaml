@@ -35,12 +35,11 @@ services:
     # Render's Postgres connection string uses the postgres:// scheme; the
     # app expects postgresql+psycopg://, and CORS_ORIGINS needs the
     # frontend's actual assigned URL, so both are resolved at container
-    # start rather than as static config.
-    dockerCommand: >-
-      sh -c "export DATABASE_URL=$(echo \"$DATABASE_URL\" | sed -E 's#^postgres(ql)?://#postgresql+psycopg://#') &&
-      export CORS_ORIGINS=\"https://${FRONTEND_HOST},http://localhost:5173\" &&
-      alembic upgrade head &&
-      uvicorn backend.app.main:app --host 0.0.0.0 --port \"$PORT\""
+    # start rather than as static config. This logic lives in a script file
+    # (backend/render-entrypoint.sh) rather than inline here because Render
+    # text-substitutes $VAR tokens in dockerCommand before it reaches a
+    # shell, which mangles inline `$(...)` command substitution.
+    dockerCommand: sh backend/render-entrypoint.sh
 
   - type: web
     name: nexora-frontend
