@@ -4,6 +4,8 @@ A full-stack e-commerce platform: FastAPI + PostgreSQL backend, React + TypeScri
 storefront, seller and admin dashboards, an AI shopping assistant, and the
 infrastructure to run it — built end to end as a portfolio project.
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/adi106/Nexora)
+
 ![Storefront homepage](docs/screenshots/storefront-home.png)
 
 ## What's here
@@ -38,7 +40,7 @@ moderate and watch the numbers.
 | Auth | JWT (PyJWT), Argon2 password hashing (pwdlib) |
 | Frontend | React 19, TypeScript, Vite, React Router |
 | AI | Anthropic Claude API (Python SDK), retrieval over the product catalog |
-| Infra | Docker, docker-compose, GitHub Actions CI |
+| Infra | Docker, docker-compose, GitHub Actions CI, one-click Render deploy (`render.yaml`) |
 | Tests | pytest (218 backend tests), Playwright-verified frontend flows |
 
 ## Architecture
@@ -109,6 +111,31 @@ npm install
 npm run dev
 ```
 
+### Option C: One-click deploy (Render)
+
+Click the **Deploy to Render** badge above (or go to
+[render.com/deploy?repo=…](https://render.com/deploy?repo=https://github.com/adi106/Nexora)).
+Render reads [`render.yaml`](render.yaml) and provisions three resources under
+your own Render account:
+
+- a free PostgreSQL database,
+- the FastAPI backend as a Docker web service (runs migrations on boot),
+- the React frontend as a static site, built with `VITE_API_BASE_URL`
+  pointed at the backend automatically.
+
+`JWT_SECRET_KEY` is generated for you, and `CORS_ORIGINS` is wired to the
+frontend's Render URL automatically — no manual URL copying required. Two
+things you may want to do afterward:
+
+- **Enable the AI assistant**: add `ANTHROPIC_API_KEY` on the `nexora-backend`
+  service in the Render dashboard (Environment tab), then trigger a manual
+  redeploy. It's left blank by default so the blueprint deploys without
+  requiring an API key.
+- **Free-tier behavior to expect**: the free database expires 30 days after
+  creation (upgrade it in the Render dashboard to keep it), and the free
+  backend service spins down after 15 minutes of inactivity — the first
+  request after a period of idleness takes 30-60 seconds to wake it up.
+
 ### Running tests
 
 ```bash
@@ -123,9 +150,12 @@ npm run lint
 
 ## Environment variables
 
-See `.env.example` for the full list. `ANTHROPIC_API_KEY` is the only optional
-one — without it, the AI assistant endpoint returns a clear 503 instead of
-failing silently or faking a response.
+See `.env.example` for the full list. `ANTHROPIC_API_KEY` is the only truly
+optional one — without it, the AI assistant endpoint returns a clear 503
+instead of failing silently or faking a response. `CORS_ORIGINS` defaults to
+the local Vite dev server and only needs to change if you deploy the frontend
+somewhere other than `localhost:5173` (the Render blueprint sets it
+automatically).
 
 ## Project structure
 
