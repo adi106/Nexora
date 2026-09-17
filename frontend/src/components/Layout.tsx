@@ -49,9 +49,9 @@ export function Layout() {
                 Orders
               </NavLink>
             )}
-            {isSeller && (
+            {isAuthenticated && (
               <NavLink to="/seller" className="nav-link">
-                Seller
+                {isSeller ? "Seller" : "Sell on NEXORA"}
               </NavLink>
             )}
             {isAdmin && (

@@ -145,6 +145,38 @@ export interface ProductRating {
   review_count: number;
 }
 
+export interface Seller {
+  id: number;
+  user_id: string;
+  store_name: string;
+  store_slug: string;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SellerStats {
+  total_revenue: number;
+  order_count: number;
+  product_count: number;
+  customer_count: number;
+}
+
+export interface ProductInput {
+  name: string;
+  slug: string;
+  description?: string | null;
+  base_price: number;
+  category_id: number;
+}
+
+export interface VariantInput {
+  sku: string;
+  price: number;
+  attributes?: Record<string, string>;
+}
+
 export interface Address {
   id: string;
   user_id: string;

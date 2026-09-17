@@ -4,6 +4,7 @@ import { CartProvider } from "./context/CartContext";
 import { WishlistProvider } from "./context/WishlistContext";
 import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { SellerRoute } from "./components/SellerRoute";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
@@ -15,6 +16,10 @@ import { CheckoutPage } from "./pages/CheckoutPage";
 import { WishlistPage } from "./pages/WishlistPage";
 import { OrdersPage } from "./pages/OrdersPage";
 import { OrderDetailPage } from "./pages/OrderDetailPage";
+import { SellerDashboardPage } from "./pages/seller/SellerDashboardPage";
+import { SellerProductsPage } from "./pages/seller/SellerProductsPage";
+import { SellerProductFormPage } from "./pages/seller/SellerProductFormPage";
+import { SellerOrdersPage } from "./pages/seller/SellerOrdersPage";
 import { ComingSoonPage } from "./pages/ComingSoonPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 
@@ -81,7 +86,43 @@ function App() {
                 />
                 <Route
                   path="seller"
-                  element={<ComingSoonPage title="Seller Dashboard" phase="Phase 8" />}
+                  element={
+                    <ProtectedRoute>
+                      <SellerDashboardPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="seller/products"
+                  element={
+                    <SellerRoute>
+                      <SellerProductsPage />
+                    </SellerRoute>
+                  }
+                />
+                <Route
+                  path="seller/products/new"
+                  element={
+                    <SellerRoute>
+                      <SellerProductFormPage />
+                    </SellerRoute>
+                  }
+                />
+                <Route
+                  path="seller/products/:productId"
+                  element={
+                    <SellerRoute>
+                      <SellerProductFormPage />
+                    </SellerRoute>
+                  }
+                />
+                <Route
+                  path="seller/orders"
+                  element={
+                    <SellerRoute>
+                      <SellerOrdersPage />
+                    </SellerRoute>
+                  }
                 />
                 <Route
                   path="admin"
