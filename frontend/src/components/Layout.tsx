@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { useCart } from "../hooks/useCart";
+import { ShoppingAssistantWidget } from "./ShoppingAssistantWidget";
 
 export function Layout() {
   const { isAuthenticated, user, isSeller, isAdmin, logout } = useAuth();
@@ -93,6 +94,8 @@ export function Layout() {
       <footer className="app-footer">
         <p>NEXORA — a full-stack commerce platform in progress.</p>
       </footer>
+
+      {isAuthenticated && <ShoppingAssistantWidget />}
     </div>
   );
 }
