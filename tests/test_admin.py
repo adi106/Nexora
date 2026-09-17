@@ -193,6 +193,50 @@ def test_admin_list_orders(client, test_db):
     assert isinstance(response.json(), list)
 
 
+def test_analytics_overview_requires_admin(client):
+    response = client.get("/api/v1/admin/analytics/overview")
+    assert response.status_code == 401
+
+
+def test_analytics_overview_returns_daily_breakdown(client, test_db):
+    token = login(client, ADMIN_EMAIL)
+
+    response = client.get(
+        "/api/v1/admin/analytics/overview",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["period_days"] == 30
+    assert "daily" in data
+    assert data["orders_in_period"] >= 0
+
+
+def test_analytics_top_products(client, test_db):
+    token = login(client, ADMIN_EMAIL)
+
+    response = client.get(
+        "/api/v1/admin/analytics/top-products",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+
+def test_analytics_category_performance(client, test_db):
+    token = login(client, ADMIN_EMAIL)
+
+    response = client.get(
+        "/api/v1/admin/analytics/category-performance",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+
 def test_non_admin_cannot_access_admin_endpoints(client, test_db):
     seller_token = login(client, SELLER_EMAIL)
 

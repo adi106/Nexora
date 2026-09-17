@@ -48,6 +48,9 @@ export function AdminDashboardPage() {
       </div>
 
       <div className="dashboard-links">
+        <Link to="/admin/analytics" className="button primary">
+          Analytics
+        </Link>
         <Link to="/admin/users" className="button">
           Users
         </Link>

@@ -22,6 +22,7 @@ import { SellerProductsPage } from "./pages/seller/SellerProductsPage";
 import { SellerProductFormPage } from "./pages/seller/SellerProductFormPage";
 import { SellerOrdersPage } from "./pages/seller/SellerOrdersPage";
 import { AdminDashboardPage } from "./pages/admin/AdminDashboardPage";
+import { AdminAnalyticsPage } from "./pages/admin/AdminAnalyticsPage";
 import { AdminUsersPage } from "./pages/admin/AdminUsersPage";
 import { AdminSellersPage } from "./pages/admin/AdminSellersPage";
 import { AdminProductsPage } from "./pages/admin/AdminProductsPage";
@@ -167,6 +168,14 @@ function App() {
                   element={
                     <AdminRoute>
                       <AdminCategoriesPage />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="admin/analytics"
+                  element={
+                    <AdminRoute>
+                      <AdminAnalyticsPage />
                     </AdminRoute>
                   }
                 />

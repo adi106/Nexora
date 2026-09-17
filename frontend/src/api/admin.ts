@@ -66,6 +66,58 @@ export async function setProductActiveAdmin(productId: string, isActive: boolean
   return { ...data, base_price: Number(data.base_price) };
 }
 
+export interface DailyMetric {
+  date: string;
+  order_count: number;
+  revenue: number;
+}
+
+export interface AnalyticsOverview {
+  period_days: number;
+  revenue_in_period: number;
+  orders_in_period: number;
+  new_users_in_period: number;
+  new_sellers_in_period: number;
+  daily: DailyMetric[];
+}
+
+export interface TopProduct {
+  product_id: string;
+  name: string;
+  units_sold: number;
+  revenue: number;
+}
+
+export interface CategoryPerformance {
+  category_id: number;
+  name: string;
+  revenue: number;
+  order_count: number;
+}
+
+export async function getAnalyticsOverview(days = 30): Promise<AnalyticsOverview> {
+  const { data } = await apiClient.get<AnalyticsOverview>("/admin/analytics/overview", {
+    params: { days },
+  });
+  return {
+    ...data,
+    revenue_in_period: Number(data.revenue_in_period),
+    daily: data.daily.map((point) => ({ ...point, revenue: Number(point.revenue) })),
+  };
+}
+
+export async function getTopProducts(limit = 10): Promise<TopProduct[]> {
+  const { data } = await apiClient.get<TopProduct[]>("/admin/analytics/top-products", {
+    params: { limit },
+  });
+  return data.map((item) => ({ ...item, revenue: Number(item.revenue) }));
+}
+
+export async function getCategoryPerformance(): Promise<CategoryPerformance[]> {
+  const { data } = await apiClient.get<CategoryPerformance[]>("/admin/analytics/category-performance");
+  return data.map((item) => ({ ...item, revenue: Number(item.revenue) }));
+}
+
 export async function listAdminCategories(): Promise<Category[]> {
   const { data } = await apiClient.get<Category[]>("/admin/categories");
   return data;

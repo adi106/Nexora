@@ -1,7 +1,9 @@
 import uuid
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func
+from sqlalchemy import cast, Date, func
 from sqlalchemy.orm import Session
 
 from backend.app.core.security import require_role
@@ -10,6 +12,7 @@ from backend.app.models.category import Category
 from backend.app.models.order import Order, OrderStatus
 from backend.app.models.order_item import OrderItem
 from backend.app.models.product import Product
+from backend.app.models.product_variant import ProductVariant
 from backend.app.models.seller import Seller
 from backend.app.models.user import User
 from backend.app.schemas.admin import (
@@ -17,6 +20,12 @@ from backend.app.schemas.admin import (
     SellerListResponse,
     UserListResponse,
     UserStatusUpdate,
+)
+from backend.app.schemas.analytics import (
+    AnalyticsOverviewResponse,
+    CategoryPerformance,
+    DailyMetric,
+    TopProduct,
 )
 from backend.app.schemas.category import CategoryResponse
 from backend.app.schemas.order import OrderResponse
@@ -189,6 +198,112 @@ def list_all_categories(
     current_user: User = Depends(require_role("admin")),
 ):
     return db.query(Category).order_by(Category.name.asc()).all()
+
+
+_FULFILLED_STATUSES = [OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.DELIVERED]
+
+
+@router.get("/analytics/overview", response_model=AnalyticsOverviewResponse)
+def get_analytics_overview(
+    days: int = Query(default=30, ge=1, le=365),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    daily_rows = (
+        db.query(
+            cast(Order.created_at, Date).label("day"),
+            func.count(func.distinct(Order.id)),
+            func.coalesce(func.sum(OrderItem.subtotal), 0),
+        )
+        .join(OrderItem, OrderItem.order_id == Order.id)
+        .filter(Order.status.in_(_FULFILLED_STATUSES), Order.created_at >= since)
+        .group_by(cast(Order.created_at, Date))
+        .order_by(cast(Order.created_at, Date))
+        .all()
+    )
+
+    daily = [
+        DailyMetric(date=day, order_count=order_count, revenue=revenue)
+        for day, order_count, revenue in daily_rows
+    ]
+
+    revenue_in_period = sum((row.revenue for row in daily), Decimal(0))
+    orders_in_period = sum(row.order_count for row in daily)
+
+    new_users_in_period = (
+        db.query(func.count(User.id)).filter(User.created_at >= since).scalar() or 0
+    )
+    new_sellers_in_period = (
+        db.query(func.count(Seller.id)).filter(Seller.created_at >= since).scalar() or 0
+    )
+
+    return AnalyticsOverviewResponse(
+        period_days=days,
+        revenue_in_period=revenue_in_period,
+        orders_in_period=orders_in_period,
+        new_users_in_period=new_users_in_period,
+        new_sellers_in_period=new_sellers_in_period,
+        daily=daily,
+    )
+
+
+@router.get("/analytics/top-products", response_model=list[TopProduct])
+def get_top_products(
+    limit: int = Query(default=10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    rows = (
+        db.query(
+            Product.id,
+            Product.name,
+            func.coalesce(func.sum(OrderItem.quantity), 0),
+            func.coalesce(func.sum(OrderItem.subtotal), 0),
+        )
+        .join(ProductVariant, OrderItem.variant_id == ProductVariant.id)
+        .join(Product, ProductVariant.product_id == Product.id)
+        .join(Order, OrderItem.order_id == Order.id)
+        .filter(Order.status.in_(_FULFILLED_STATUSES))
+        .group_by(Product.id, Product.name)
+        .order_by(func.sum(OrderItem.subtotal).desc())
+        .limit(limit)
+        .all()
+    )
+
+    return [
+        TopProduct(product_id=product_id, name=name, units_sold=units_sold, revenue=revenue)
+        for product_id, name, units_sold, revenue in rows
+    ]
+
+
+@router.get("/analytics/category-performance", response_model=list[CategoryPerformance])
+def get_category_performance(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    rows = (
+        db.query(
+            Category.id,
+            Category.name,
+            func.coalesce(func.sum(OrderItem.subtotal), 0),
+            func.count(func.distinct(OrderItem.order_id)),
+        )
+        .join(Product, Product.category_id == Category.id)
+        .join(ProductVariant, ProductVariant.product_id == Product.id)
+        .join(OrderItem, OrderItem.variant_id == ProductVariant.id)
+        .join(Order, OrderItem.order_id == Order.id)
+        .filter(Order.status.in_(_FULFILLED_STATUSES))
+        .group_by(Category.id, Category.name)
+        .order_by(func.sum(OrderItem.subtotal).desc())
+        .all()
+    )
+
+    return [
+        CategoryPerformance(category_id=cid, name=name, revenue=revenue, order_count=order_count)
+        for cid, name, revenue, order_count in rows
+    ]
 
 
 @router.get("/orders", response_model=list[OrderResponse])

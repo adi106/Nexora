@@ -10,7 +10,21 @@
   --color-success: #16a34a;
   --radius: 10px;
   --shadow: 0 1px 3px rgba(20, 20, 43, 0.08);
+  --chart-grid: #e4e4ec;
+  --chart-axis-text: #6b6b80;
   color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --chart-grid: #33334a;
+    --chart-axis-text: #9a99b3;
+  }
+}
+
+:root[data-theme="dark"] {
+  --chart-grid: #33334a;
+  --chart-axis-text: #9a99b3;
 }
 
 * {
@@ -990,6 +1004,33 @@ textarea {
   gap: 0.3rem;
   font-size: 0.8rem;
   font-weight: 600;
+}
+
+/* Analytics chart */
+.chart-root {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.chart-root svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.chart-bar {
+  fill: var(--color-primary);
+}
+
+.chart-bar:hover {
+  fill: var(--color-primary-dark);
+}
+
+.chart-axis-label {
+  font-size: 10px;
+  fill: var(--chart-axis-text);
 }
 
 @media (max-width: 860px) {
