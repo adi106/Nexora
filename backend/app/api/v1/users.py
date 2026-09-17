@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
+from backend.app.core.rate_limit import registration_rate_limiter
 from backend.app.core.security import get_current_user, hash_password
 from backend.app.db.dependencies import get_db
 from backend.app.models.user import User
@@ -18,6 +19,7 @@ router = APIRouter(
     "",
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(registration_rate_limiter)],
 )
 def create_user(
     user_data: UserCreate,

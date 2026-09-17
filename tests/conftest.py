@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from backend.app.models.review import Review
 from backend.app.models.product_interaction import ProductInteraction
 from backend.app.models.wishlist import WishlistItem
+from backend.app.core.rate_limit import login_rate_limiter, registration_rate_limiter
 from backend.app.core.security import hash_password
 from backend.app.db.dependencies import get_db
 from backend.app.main import app
@@ -477,6 +478,11 @@ def client():
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
+    # The test suite logs in and registers users far more rapidly than the
+    # rate limiters are tuned for; disable them here and exercise the real
+    # limiters directly in tests/test_rate_limiting.py instead.
+    app.dependency_overrides[login_rate_limiter] = lambda: None
+    app.dependency_overrides[registration_rate_limiter] = lambda: None
 
     with TestClient(app) as test_client:
         yield test_client

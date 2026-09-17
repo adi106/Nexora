@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.app.core.request_logging import RequestLoggingMiddleware
+from backend.app.core.security_headers import SecurityHeadersMiddleware
 from backend.app.api.v1.addresses import router as addresses_router
 from backend.app.api.v1.admin import router as admin_router
 from backend.app.api.v1.assistant import router as assistant_router
@@ -35,6 +37,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
 
 
 app.include_router(
