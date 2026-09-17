@@ -18,9 +18,55 @@ from backend.app.schemas.product_variant import (
     ProductVariantResponse,
     ProductVariantUpdate,
     ProductVariantStatusUpdate,
+    VariantWithProductResponse,
 )
 
 router = APIRouter(prefix="/products", tags=["Product Variants"])
+
+
+@router.get(
+    "/variants/{variant_id}",
+    response_model=VariantWithProductResponse,
+)
+def get_variant(
+    variant_id: UUID,
+    db: Session = Depends(get_db),
+):
+    result = (
+        db.query(ProductVariant, Product, Inventory)
+        .join(Product, Product.id == ProductVariant.product_id)
+        .outerjoin(Inventory, Inventory.variant_id == ProductVariant.id)
+        .filter(ProductVariant.id == variant_id)
+        .first()
+    )
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Product variant not found",
+        )
+
+    variant, product, inventory = result
+
+    available_quantity = 0
+
+    if variant.is_active and inventory is not None and inventory.is_active:
+        available_quantity = max(
+            inventory.quantity - inventory.reserved_quantity,
+            0,
+        )
+
+    return VariantWithProductResponse(
+        id=variant.id,
+        product_id=variant.product_id,
+        product_name=product.name,
+        product_slug=product.slug,
+        sku=variant.sku,
+        price=variant.price,
+        attributes=variant.attributes,
+        is_active=variant.is_active,
+        available_quantity=available_quantity,
+    )
 
 
 @router.post(
