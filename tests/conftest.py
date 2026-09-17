@@ -212,6 +212,54 @@ def seed_test_database():
             db.add(seller)
             db.flush()
 
+        other_seller_user = db.scalar(
+            select(User).where(
+                User.email == "other.test.seller@nexora.local"
+            )
+        )
+
+        if other_seller_user is None:
+            other_seller_user = User(
+                email="other.test.seller@nexora.local",
+                password_hash=hash_password("TestPassword123!"),
+                first_name="Other",
+                last_name="Seller",
+            )
+            db.add(other_seller_user)
+            db.flush()
+
+        if seller_role is not None:
+            existing_other_seller_role = db.scalar(
+                select(UserRole).where(
+                    UserRole.user_id == other_seller_user.id,
+                    UserRole.role_id == seller_role.id,
+                )
+            )
+
+            if existing_other_seller_role is None:
+                db.add(
+                    UserRole(
+                        user_id=other_seller_user.id,
+                        role_id=seller_role.id,
+                    )
+                )
+
+        other_seller = db.scalar(
+            select(Seller).where(
+                Seller.user_id == other_seller_user.id
+            )
+        )
+
+        if other_seller is None:
+            other_seller = Seller(
+                user_id=other_seller_user.id,
+                store_name="Other Test Store",
+                store_slug="other-test-store",
+                description="Second test seller",
+            )
+            db.add(other_seller)
+            db.flush()
+
         category = db.scalar(
             select(Category).where(
                 Category.slug == "laptops"
